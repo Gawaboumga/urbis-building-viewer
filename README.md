@@ -31,6 +31,32 @@ docker compose -f .\compose.local.yml --env-file=.env --profile backend --profil
 docker compose -f compose.prod.yml --env-file=.prod.env --profile backend --profile frontend up --build -d
 ```
 
+### How to update data
+
+```
+cd data
+
+curl -O https://urbisdownload.datastore.brussels/UrbIS/Vector/M8/UrbIS-Buildings3D/GPKG/UrbISBuildings3D_31370_GPKG_04000_20260103.zip
+unzip UrbISBuildings3D_31370_GPKG_04000_20260103.zip
+mv gpkg/UrbISBuildings3D_04000.gpkg UrbISBuildings3D_04000.gpkg
+
+curl -O https://urbisdownload.datastore.brussels/UrbIS/Vector/M8/UrbIS-Buildings/GPKG/UrbISBuildings_31370_GPKG_04000_20260103.zip
+unzip UrbISBuildings_31370_GPKG_04000_20260103.zip
+mv gpkg/UrbISBuildings_04000.gpkg UrbISBuildings_04000.gpkg
+```
+
+From within the image:
+```
+docker exec -it "my_docker_id" /bin/bash
+pip install requests
+python
+import requests
+url = "http://localhost:8000/maintenance/load/parcel_and_building"
+requests.post(url, json={})
+url = "http://localhost:8000/maintenance/load/3d_construction"
+requests.post(url, json={})
+```
+
 ## Data Source
 Uses Urbis open geographic datasets.
 More info:

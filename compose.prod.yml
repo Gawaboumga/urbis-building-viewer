@@ -24,6 +24,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile.prod
     container_name: urbis_backend
+    ports:
+      - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${URBIS_USERNAME}:${URBIS_PASSWORD}@${URBIS_HOST}:5432/${URBIS_DB}
       - DNS_NAME=${DNS_NAME}

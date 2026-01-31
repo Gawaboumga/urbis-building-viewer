@@ -1,0 +1,18 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router';
+import BuildingPage from './pages/BuildingPage';
+import MapPage from './pages/MapPage';
+
+const App: React.FC = () => {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MapPage />} />
+        <Route path="/building/:buildingSolidId" element={<BuildingPage />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Router>
+  );
+};
+
+export default App;

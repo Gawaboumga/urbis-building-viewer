@@ -33,6 +33,9 @@ RUN --mount=type=bind,source=frontend/package.json,target=package.json \
 # Create a stage for building the application.
 FROM deps AS build
 
+ARG VITE_API_BASE
+ENV VITE_API_BASE=$VITE_API_BASE
+
 # Download additional development dependencies before building, as some projects require
 # "devDependencies" to be installed to build. If you don't need this, remove this step.
 RUN --mount=type=bind,source=frontend/package.json,target=package.json \

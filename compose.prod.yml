@@ -42,6 +42,8 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE: "http://${DNS_NAME}:8000"
     container_name: urbis_frontend
     ports:
       - "63500:3000"

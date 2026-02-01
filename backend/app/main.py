@@ -31,6 +31,10 @@ origins = [
     "https://localhost:3000",
     "http://localhost:63500",
     "https://localhost:63500",
+    f"http://{Settings.DNS_NAME}:80",
+    f"https://{Settings.DNS_NAME}:80",
+    f"http://{Settings.DNS_NAME}:443",
+    f"https://{Settings.DNS_NAME}:443",
     f"http://{Settings.DNS_NAME}:63500",
     f"https://{Settings.DNS_NAME}:63500",
 ]

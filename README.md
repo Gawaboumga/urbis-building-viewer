@@ -3,6 +3,8 @@
 ## 🏙️ 3D Building Visualizer (Urbis)
 A small tool to visualize buildings in 3D and extract their surfaces, using Urbis data from the Brussels‑Capital Region. Supports address search and point‑based lookup.
 
+http://my-building.brussels/
+
 ### Features
 - 3D building rendering
 - Surface extraction (walls, roof, footprint)

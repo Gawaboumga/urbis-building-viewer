@@ -31,7 +31,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
-      - ./frontend/dist:/var/www/frontend:ro
+      - acme-challenge:/var/www/acme
     depends_on:
       - backend
       - frontend
@@ -63,8 +63,8 @@ services:
       args:
         VITE_API_BASE: "/api"
     container_name: urbis_frontend
-    volumes:
-      - ./frontend/dist:/app/dist
+    expose:
+      - "3000"
     restart: always
 
   certbot:
@@ -74,11 +74,10 @@ services:
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./frontend/dist:/var/www/frontend
+      - acme-challenge:/var/www/acme
     command: >
       certonly --webroot
-             --webroot-path=/var/www/frontend
+             -w /var/www/acme
              --email ${EMAIL}
              --agree-tos
              --no-eff-email
@@ -94,4 +93,5 @@ networks:
 volumes:
   certbot-etc:
   certbot-var:
+  acme-challenge:
   urbis_pgdata:

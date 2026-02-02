@@ -6,30 +6,20 @@ FROM node:${NODE_VERSION}-alpine AS build
 
 WORKDIR /usr/src/app
 
-# Install dependencies (including devDependencies)
 COPY frontend/package*.json ./
 RUN npm ci
 
-# Copy source
 COPY frontend/ .
-
-# Build
 ARG VITE_API_BASE
 ENV VITE_API_BASE=$VITE_API_BASE
 RUN npm run build
 
-# -------------------------
-# Final runtime image
-# -------------------------
 FROM node:${NODE_VERSION}-alpine AS final
 
 WORKDIR /usr/src/app
 
-# Install a static file server
 RUN npm install -g serve
-
 COPY --from=build /usr/src/app/dist ./dist
 
 EXPOSE 3000
-
 CMD ["serve", "-s", "dist"]

@@ -32,7 +32,9 @@ docker compose -f .\compose.local.yml --env-file=.env --profile backend --profil
 ```
 docker compose -f compose.prod.yml --env-file=.prod.env build
 docker compose -f compose.prod.yml --env-file=.prod.env up -d nginx backend frontend
+# Beware that you must first disable 443 in nginx conf prior running cert, then reenable it
 docker compose -f compose.prod.yml --env-file=.prod.env run --rm certbot
+docker compose -f compose.prod.yml --env-file=.prod.env restart nginx
 ```
 
 ### How to update data

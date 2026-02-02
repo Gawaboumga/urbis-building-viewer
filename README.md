@@ -32,7 +32,7 @@ docker compose -f .\compose.local.yml --env-file=.env --profile backend --profil
 ```
 docker compose -f compose.prod.yml --env-file=.prod.env build
 docker compose -f compose.prod.yml --env-file=.prod.env up -d nginx backend frontend
-
+docker compose -f compose.prod.yml --env-file=.prod.env run --rm certbot
 ```
 
 ### How to update data

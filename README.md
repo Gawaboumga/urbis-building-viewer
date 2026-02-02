@@ -30,7 +30,9 @@ docker compose -f .\compose.local.yml --env-file=.env --profile backend --profil
 ### How to launch in prod
 
 ```
-docker compose -f compose.prod.yml --env-file=.prod.env --profile backend --profile frontend up --build -d
+docker compose -f compose.prod.yml --env-file=.prod.env build
+docker compose -f compose.prod.yml --env-file=.prod.env up -d nginx backend frontend
+
 ```
 
 ### How to update data

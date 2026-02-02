@@ -18,14 +18,32 @@ services:
     volumes:
       - urbis_pgdata:/var/lib/postgresql
 
+  nginx:
+    <<: [*common]
+    image: nginx:mainline-alpine
+    container_name: urbis_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - ./frontend/dist:/var/www/frontend:ro
+    depends_on:
+      - backend
+      - frontend
+
   backend:
     <<: [*common]
     build:
       context: .
       dockerfile: backend/Dockerfile.prod
     container_name: urbis_backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${URBIS_USERNAME}:${URBIS_PASSWORD}@${URBIS_HOST}:5432/${URBIS_DB}
       - DNS_NAME=${DNS_NAME}
@@ -35,8 +53,6 @@ services:
       - ./data:/data:ro
     command: >
       sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    profiles:
-      - backend
     restart: always
 
   frontend:
@@ -45,19 +61,30 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        VITE_API_BASE: "http://${DNS_NAME}:8000"
+        VITE_API_BASE: "/api"
     container_name: urbis_frontend
-    ports:
-      - "63500:3000"
-    environment:
-      - VITE_API_BASE=http://${DNS_NAME}:8000
-    command: >
-      sh -c "npx serve -s dist"
-    depends_on:
-      - backend
-    profiles:
-      - frontend
+    command: ["sh", "-c", "npm run build"]
+    volumes:
+      - ./frontend/dist:/app/dist
     restart: always
+
+  certbot:
+    <<: [*common]
+    image: certbot/certbot
+    container_name: urbis_certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./frontend/dist:/var/www/frontend
+    entrypoint: >
+      sh -c "certbot certonly --webroot
+             --webroot-path=/var/www/frontend
+             --email ${EMAIL}
+             --agree-tos
+             --no-eff-email
+             -d ${DNS_NAME}
+             -d www.${DNS_NAME}"
 
 networks:
   urbis_building_viewer_network:
@@ -66,4 +93,6 @@ networks:
     attachable: true
 
 volumes:
+  certbot-etc:
+  certbot-var:
   urbis_pgdata:

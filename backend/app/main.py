@@ -31,8 +31,6 @@ origins = [
     "https://localhost:3000",
     "http://localhost:63500",
     "https://localhost:63500",
-    f"http://{Settings.DNS_NAME}",
-    f"https://{Settings.DNS_NAME}"
 ]
 
 app.add_middleware(
@@ -50,7 +48,13 @@ app.include_router(urbis_3d_router.api_router, prefix='/urbis_3d', tags=['urbis_
 
 def internal_only(request: Request):
     client_ip = request.client.host
-    if client_ip not in ("127.0.0.1", "localhost", "0.0.0.0", "172.18.0.0/16"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    if client_ip.startswith("172.18."):
+        return
+
+    if client_ip in ("127.0.0.1", "localhost"):
+        return
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 app.include_router(maintenance_router.api_router, prefix='/maintenance', tags=['maintenance'], dependencies=[Depends(internal_only)])

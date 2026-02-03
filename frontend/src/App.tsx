@@ -6,15 +6,17 @@ import FooterLegal from './components/FooterLegal';
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<MapPage />} />
-        <Route path="/building/:buildingSolidId" element={<BuildingPage />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Router>
+    <>
+      <Router>
+        <Routes>
+          <Route path="/" element={<MapPage />} />
+          <Route path="/building/:buildingSolidId" element={<BuildingPage />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Router>
 
-    <FooterLegal />
+      <FooterLegal />
+    </>
   );
 };
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router';
 import BuildingPage from './pages/BuildingPage';
 import MapPage from './pages/MapPage';
+import FooterLegal from './components/FooterLegal';
 
 const App: React.FC = () => {
   return (
@@ -12,6 +13,8 @@ const App: React.FC = () => {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
+
+    <FooterLegal />
   );
 };
 

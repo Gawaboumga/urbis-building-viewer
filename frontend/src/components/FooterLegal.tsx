@@ -1,6 +1,6 @@
 export default function FooterLegal() {
   return (
-    <footer style="margin-top:2rem; padding:1rem; font-size:0.8rem; color:#555; border-top:1px solid #ddd;">
+    <footer style={{ marginTop: "2rem", padding: "1rem", fontSize: "0.8rem", color: "#555", borderTop: "1px solid #ddd", }} >
     <p>
         Using UrbIS data - available as open data:
         <a href="https://be.brussels/fr/propos-de-la-region/les-donnees-urbis" target="_blank" rel="noopener">

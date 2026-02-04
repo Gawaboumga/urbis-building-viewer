@@ -19,7 +19,7 @@ const BuildingPage: React.FC = () => {
     <div className="container-fluid full-height">
       <div className="info-banner p-3 border-bottom">
         <h4>Building Information</h4>
-        <p>Select a face on the building to see details here.</p>
+        <p>Select a face on the building to see surface.</p>
       </div>
       <div className="main-section d-flex flex-row full-height">
         <div

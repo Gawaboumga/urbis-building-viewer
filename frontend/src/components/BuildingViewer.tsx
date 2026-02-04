@@ -344,6 +344,17 @@ export class BuildingViewer {
     box.getCenter(center);
     group.position.sub(center);
 
+    const boxSize = new THREE.Vector3();
+    box.getSize(boxSize);
+
+    const maxDim = Math.max(boxSize.x, boxSize.y, boxSize.z);
+    const distance = maxDim;
+
+    // Move camera back along Z (or any direction you prefer)
+    this.camera.position.set(0, distance * 0.77, distance * 0.77);
+    this.camera.lookAt(0, 0, 0);
+    this.controls.update();
+
     return group;
   }
 

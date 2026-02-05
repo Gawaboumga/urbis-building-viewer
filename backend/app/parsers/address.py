@@ -20,21 +20,21 @@ DEFAULT_TOPK = 15
 
 _ABBR = {
     # French / bilingual
-    r'\bav\.?\b': 'avenue',
-    r'\bbd\.?\b': 'boulevard',
-    r'\bblvd\.?\b': 'boulevard',
-    r'\bch\.\b': 'chaussee',
-    r'\bchauss[ée]e\b': 'chaussee',
-    r'\brte\b': 'route',
-    r'\bpl(\.|ace)?\b': 'place',
-    r'\bst\b': 'saint',
-    r'\bste\b': 'sainte',
+    re.compile(r'\bav\.?'): 'avenue',
+    re.compile(r'\bbd\.?'): 'boulevard',
+    re.compile(r'\bblvd\.?'): 'boulevard',
+    re.compile(r'\bch\.?'): 'chaussee',
+    re.compile(r'\bchauss[ée]e\b'): 'chaussee',
+    re.compile(r'\brte\b'): 'route',
+    re.compile(r'\bpl\.?'): 'place',
+    re.compile(r'\bst\b'): 'saint',
+    re.compile(r'\bste\b'): 'sainte',
     # Dutch
-    r'\bstr\.?\b': 'straat',
-    r'\blaan\b': 'laan',
-    r'\bstwg\b': 'steenweg',
-    r'\bsteenw?g\b': 'steenweg',
-    r'\bpl(\.|ein)?\b': 'plein',
+    re.compile(r'\b(\w+)str\.?'): r'\1straat',
+    re.compile(r'\b(\w+)ln\.?'): r'\1laan',
+    re.compile(r'\b(\w+)stwg'): r'\1steenweg',
+    re.compile(r'\b(\w+)steenw?g'): r'\1steenweg',
+    re.compile(r'\b(\w+)pl\.?'): r'\1plein',
 }
 
 _BOX_PATTERNS = [
@@ -44,14 +44,16 @@ _BOX_PATTERNS = [
     r'\bbte\s*([A-Z0-9\-]+)\b',
 ]
 
+_WHITESPACE_PATTERN = re.compile(r'\s+')
+
 def _strip_accents(s: str) -> str:
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def _norm(s: str) -> str:
     s0 = _strip_accents(s.lower())
     for pat, repl in _ABBR.items():
-        s0 = re.sub(pat, repl, s0)
-    s0 = re.sub(r'\s+', ' ', s0).strip()
+        s0 = pat.sub(repl, s0)
+    s0 = _WHITESPACE_PATTERN.sub(' ', s0).strip()
     return s0
 
 def _canonical_municipality(s: str | None) -> str | None:
@@ -77,7 +79,7 @@ _ADDR_RE = re.compile(r"""
 """, re.IGNORECASE | re.VERBOSE)
 
 def parse_address(text: str) -> dict[str, str | None]:
-    t = re.sub(r'\s+', ' ', text).strip()
+    t = _WHITESPACE_PATTERN.sub(' ', text).strip()
     m = _ADDR_RE.match(t)
 
     street = number = postal_code = municipality = box = None

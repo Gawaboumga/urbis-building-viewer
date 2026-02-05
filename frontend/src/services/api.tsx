@@ -15,7 +15,7 @@ export async function searchAddressesByBuilding(query: string, topK: number) {
 
   const allValues: AddressGroup[] = [];
 
-  const toSearch = data.building != null ? data.building : data.similar;
+  const toSearch = data.building != null && data.building.length > 0 ? data.building : data.similar;
 
   const groupedByBuilding = toSearch.reduce((acc: Record<number, Address[]>, item: Address) => {
     const building_id = item.building_id ?? 0;

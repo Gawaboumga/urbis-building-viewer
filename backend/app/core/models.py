@@ -16,6 +16,9 @@ class _StreetMixin:
     street_id: Mapped[int] = mapped_column(primary_key=True)
     street_name_dutch: Mapped[str] = mapped_column()
     street_name_french: Mapped[str] = mapped_column()
+
+    cleaned_street_name_dutch: Mapped[str] = mapped_column()
+    cleaned_street_name_french: Mapped[str] = mapped_column()
 class Street(Base, _StreetMixin):
     __tablename__ = 'street'
     __table_args__ = (

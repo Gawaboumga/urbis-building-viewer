@@ -3,6 +3,7 @@ from app.core.models import Address, Building, CadastralParcel, Municipality, St
 from app.core.settings import Settings
 from app.enums.cadastral_parcel_type import CadastralParcelType
 from app.enums.inspire_base_uri import InspireBaseURI
+from app.parsers.address import _norm
 from shapely.geometry import Point
 from sqlalchemy import create_engine, select, Float, Integer, REAL, String
 from sqlalchemy.event import listen
@@ -93,6 +94,8 @@ def read_addresses(capa_key_to_capa_inspire_id: dict[str, int], municipalities: 
                     street_id=street_id,
                     street_name_dutch=gpkg_address.strname_dut,
                     street_name_french=gpkg_address.strname_fre,
+                    cleaned_street_name_dutch=_norm(gpkg_address.strname_dut),
+                    cleaned_street_name_french=_norm(gpkg_address.strname_fre),
                 )
                 streets[street_id] = street
 

@@ -37,38 +37,6 @@ _ABBR = {
     r'\bpl(\.|ein)?\b': 'plein',
 }
 
-_MUNICIPALITY_MAP = {
-    # FR canonical
-    "bruxelles": "bruxelles",
-    "saint-gilles": "saint-gilles",
-    "schaerbeek": "schaerbeek",
-    "etterbeek": "etterbeek",
-    "ixelles": "ixelles",
-    "uccle": "uccle",
-    "molenbeek-saint-jean": "molenbeek",
-    "woluwe-saint-lambert": "woluwe-saint-lambert",
-    "woluwe-saint-pierre": "woluwe-saint-pierre",
-    "forest": "foret",
-    "foret": "foret",
-    "auderghem": "auderghem",
-    "evere": "evere",
-    "koekelberg": "koekelberg",
-    "jette": "jette",
-    "watermael-boitsfort": "watermael-boitsfort",
-    # NL → canonical FR
-    "brussel": "bruxelles",
-    "sint-gillis": "saint-gilles",
-    "schaarbeek": "schaerbeek",
-    "elsene": "ixelles",
-    "ukkel": "uccle",
-    "molenbeek-sint-jean": "molenbeek",
-    "sint-lambrechts-woluwe": "woluwe-saint-lambert",
-    "sint-pieters-woluwe": "woluwe-saint-pierre",
-    "vorst": "foret",
-    "oudergem": "auderghem",
-    "watermaal-bosvoorde": "watermael-boitsfort",
-}
-
 _BOX_PATTERNS = [
     r'\bbox[\.]?\s*([A-Z0-9\-]+)\b',
     r'\bbo[îi]te\s*([A-Z0-9\-]+)\b',
@@ -89,8 +57,7 @@ def _norm(s: str) -> str:
 def _canonical_municipality(s: str | None) -> str | None:
     if not s:
         return None
-    x = _norm(s)
-    return _MUNICIPALITY_MAP.get(x, x)
+    return _norm(s)
 
 # ---------------------------
 # Parse free-text address
@@ -144,7 +111,7 @@ def parse_address(text: str) -> dict[str, str | None]:
 # Candidate retrieval (no FTS)
 # ---------------------------
 
-def _street_token_filters(street_norm: str, language: Language, StreetModel: type[Street]) -> list[Any]:
+def _street_token_filters(street_norm: str, language: Language) -> list[Any]:
     """Build AND filters across distinctive tokens with ILIKE contains."""
     if not street_norm:
         return []
@@ -156,12 +123,12 @@ def _street_token_filters(street_norm: str, language: Language, StreetModel: typ
     # We still AND all tokens to keep precision without FTS.
     def ilike(token):
         if language == Language.FR:
-            return StreetModel.street_name_french.ilike(f'%{token}%')
+            return Street.cleaned_street_name_french.like(f'%{token}%')
         elif language == Language.NL:
-            return StreetModel.street_name_dutch.ilike(f'%{token}%')
+            return Street.cleaned_street_name_dutch.like(f'%{token}%')
         else:
-            return or_(StreetModel.street_name_french.ilike(f"%{token}%"),
-                StreetModel.street_name_dutch.ilike(f"%{token}%"))
+            return or_(Street.cleaned_street_name_french.like(f"%{token}%"),
+                Street.cleaned_street_name_dutch.like(f"%{token}%"))
 
     filters = [
         and_(ilike(tok))
@@ -203,7 +170,7 @@ async def fetch_candidates(session: Session,
         street_join = street_join.where(func.lower(Address.box_number) == box.lower())
 
     # Build street filter via join
-    street_filters = _street_token_filters(street, language, Street)
+    street_filters = _street_token_filters(street, language)
 
     if street_filters:
         for f in street_filters:

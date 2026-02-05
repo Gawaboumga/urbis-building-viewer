@@ -33,7 +33,7 @@ const SearchBar: React.FC<Props> = ({ onSelectAddresses }) => {
       } else {
         setSuggestions([]);
       }
-    }, 500);
+    }, 300);
   };
 
   const handleSelect = async (group: AddressGroup) => {

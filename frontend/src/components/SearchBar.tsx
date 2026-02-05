@@ -9,7 +9,7 @@ interface Props {
 const SearchBar: React.FC<Props> = ({ onSelectAddresses }) => {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<AddressGroup[]>([]);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<number | null>(null);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

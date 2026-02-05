@@ -81,6 +81,7 @@ services:
              --email ${EMAIL}
              --agree-tos
              --no-eff-email
+             --non-interactive
              -d ${DNS_NAME}
              -d www.${DNS_NAME}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { searchAddressesByBuilding, getAddressesById } from '../services/api';
 import type { Address, AddressGroup } from '../types';
 
@@ -9,22 +9,31 @@ interface Props {
 const SearchBar: React.FC<Props> = ({ onSelectAddresses }) => {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<AddressGroup[]>([]);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
 
-    if (value.length > 3) {
-      try {
-        const data = await searchAddressesByBuilding(value, 30);
-        const sortedData = sortBuildings(data);
-        setSuggestions(sortedData);
-      } catch {
+    // Clear previous timer
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Start a new timer
+    debounceRef.current = setTimeout(async () => {
+      if (value.length > 3) {
+        try {
+          const data = await searchAddressesByBuilding(value, 30);
+          const sortedData = sortBuildings(data);
+          setSuggestions(sortedData);
+        } catch {
+          setSuggestions([]);
+        }
+      } else {
         setSuggestions([]);
       }
-    } else {
-      setSuggestions([]);
-    }
+    }, 1000);
   };
 
   const handleSelect = async (group: AddressGroup) => {
@@ -78,15 +87,9 @@ const SearchBar: React.FC<Props> = ({ onSelectAddresses }) => {
       const lenA = numA.toString().length;
       const lenB = numB.toString().length;
 
-      if (lenA !== lenB) {
-        return lenA - lenB; // shorter digit length first
-      }
+      if (lenA !== lenB) return lenA - lenB;
+      if (numA !== numB) return numA - numB;
 
-      if (numA !== numB) {
-        return numA - numB; // smaller numeric value first
-      }
-
-      // If numeric parts are equal, compare trailing letters
       const letterA = a.policeNumber.replace(/\d+/g, "") || "";
       const letterB = b.policeNumber.replace(/\d+/g, "") || "";
       return letterA.localeCompare(letterB);

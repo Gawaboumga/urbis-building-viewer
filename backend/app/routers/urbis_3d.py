@@ -41,7 +41,10 @@ async def get_building_solid(building_solid: requests.BuildingSolid, db: AsyncSe
         if building_solid.compute_area:
             assert face.geometry.srid == LAMBERT_72_SRID
             # Beware that we benefit from the fact that LAMBERT 72 is geodesic, hence "pythagore" works
-            properties['area'] = compute_polygon_area(geom)
+            try:
+                properties['area'] = compute_polygon_area(geom)
+            except:
+                properties['area'] = 0
 
         if building_solid.destination_srid is not None:
             geom = transform_geometry(geom, LAMBERT_72_SRID, building_solid.destination_srid)

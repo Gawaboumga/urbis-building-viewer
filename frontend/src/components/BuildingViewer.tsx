@@ -289,8 +289,67 @@ export class BuildingViewer {
     this.renderer.render(this.scene, this.camera);
   };
 
+  private computeGroupCenter(geojson: any) {
+    const all = new THREE.Vector3();
+    let count = 0;
+
+    geojson.features.forEach((face: any) => {
+      face.geometry.coordinates.forEach((polygon: number[][][]) => {
+        polygon.forEach((ring: number[][]) => {
+          ring.forEach(([lon, lat, alt]) => {
+            // Your mapping to 3D:
+            all.add(new THREE.Vector3(lon, alt, -lat));
+            count++;
+          });
+        });
+      });
+    });
+
+    return count > 0 ? all.multiplyScalar(1 / count) : new THREE.Vector3();
+  }
+
+  private ensureTrianglesFaceOutward(
+    geometry: THREE.BufferGeometry,
+    outwardDir: THREE.Vector3
+  ): THREE.BufferGeometry {
+    // Work on a non-indexed copy for easy triangle swapping
+    const g = geometry.toNonIndexed();
+
+    const pos = g.getAttribute('position') as THREE.BufferAttribute;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const ab = new THREE.Vector3(), ac = new THREE.Vector3();
+    const avg = new THREE.Vector3(0, 0, 0);
+
+    // Accumulate area-weighted normal
+    for (let i = 0; i < pos.count; i += 3) {
+      a.fromBufferAttribute(pos, i + 0);
+      b.fromBufferAttribute(pos, i + 1);
+      c.fromBufferAttribute(pos, i + 2);
+      ab.subVectors(b, a);
+      ac.subVectors(c, a);
+      avg.add(ab.cross(ac)); // area-weighted normal (twice area)
+    }
+
+    // If pointing inward, swap (v1,v2) for every triangle
+    if (avg.dot(outwardDir) < 0) {
+      for (let i = 0; i < pos.count; i += 3) {
+        // swap vertices 1 and 2 in-place
+        const x1 = pos.getX(i + 1), y1 = pos.getY(i + 1), z1 = pos.getZ(i + 1);
+        const x2 = pos.getX(i + 2), y2 = pos.getY(i + 2), z2 = pos.getZ(i + 2);
+        pos.setXYZ(i + 1, x2, y2, z2);
+        pos.setXYZ(i + 2, x1, y1, z1);
+      }
+      pos.needsUpdate = true;
+    }
+
+    // Recompute normals after final winding is set
+    g.computeVertexNormals();
+    return g;
+  }
+
   private createMeshFromGeoJSON(geojson: any): THREE.Group {
     const group = new THREE.Group();
+    const solidCenter = this.computeGroupCenter(geojson);
 
     geojson.features.forEach((face: any) => {
       const dbArea = face.properties.area;
@@ -300,12 +359,18 @@ export class BuildingViewer {
           const vertices = ring.map(([lon, lat, alt]) => new THREE.Vector3(lon, alt, -lat));
           const normal = computeNormal(vertices);
           const { points2D, centroid, xAxis, yAxis } = projectPolygonTo2D(vertices, normal);
+
           const shape = new THREE.Shape(points2D);
           const shapeGeometry = new THREE.ShapeGeometry(shape);
-          const geometry = this.mapTo3D(shapeGeometry, centroid, xAxis, yAxis);
+          const geometry3D = this.mapTo3D(shapeGeometry, centroid, xAxis, yAxis);
 
+          // 🔴 Ensure triangles face outward relative to solid center
+          const outward = centroid.clone().sub(solidCenter).normalize();
+          const geometry = this.ensureTrianglesFaceOutward(geometry3D, outward);
+
+          // (Re)build vertex colors using final triangle winding
           const colors: number[] = [];
-          const nonIndexed = geometry.toNonIndexed();
+          const nonIndexed = geometry; // already non-indexed from the helper
           const pos = nonIndexed.getAttribute('position');
 
           for (let j = 0; j < pos.count; j += 3) {

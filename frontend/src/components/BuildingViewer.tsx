@@ -296,7 +296,7 @@ export class BuildingViewer {
     geojson.features.forEach((face: any) => {
       face.geometry.coordinates.forEach((polygon: number[][][]) => {
         polygon.forEach((ring: number[][]) => {
-          ring.forEach(([lon, lat, alt]) => {
+          ring.forEach(([lon, lat, _]) => {
             // Your mapping to 3D:
             all.add(new THREE.Vector3(lon, 0, -lat));
             count++;

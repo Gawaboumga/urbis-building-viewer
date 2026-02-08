@@ -298,7 +298,7 @@ export class BuildingViewer {
         polygon.forEach((ring: number[][]) => {
           ring.forEach(([lon, lat, alt]) => {
             // Your mapping to 3D:
-            all.add(new THREE.Vector3(lon, alt, -lat));
+            all.add(new THREE.Vector3(lon, 0, -lat));
             count++;
           });
         });

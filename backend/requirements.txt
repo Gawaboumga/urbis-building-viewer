@@ -1,0 +1,4 @@
+fastapi[standard]
+geoalchemy2[shapely]
+pyproj
+sqlalchemy[postgresql-asyncpg]

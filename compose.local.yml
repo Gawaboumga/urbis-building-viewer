@@ -1,0 +1,77 @@
+name: urbis-building-viewer
+
+x-common:
+  &common
+    networks:
+      - urbis_building_viewer_network
+
+services:
+  db:
+    <<: [*common]
+    image: postgis/postgis:18-3.6-alpine
+    container_name: postgis_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${URBIS_USERNAME}
+      POSTGRES_PASSWORD: ${URBIS_PASSWORD}
+      POSTGRES_DB: ${URBIS_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - urbis_pgdata:/var/lib/postgresql
+
+  backend:
+    <<: [*common]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: urbis_backend
+    ports:
+      - "8000:8000"
+      - "5676:5676"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${URBIS_USERNAME}:${URBIS_PASSWORD}@${URBIS_HOST}:5432/${URBIS_DB}
+      - DNS_NAME=${DNS_NAME}
+      - FORBIDDEN_AREAS_FOLDER=/data/forbidden_areas
+      - URBIS_PARCEL_BUILDING_GEO_PACKAGE_PATH=/data/UrbISBuildings_04000.gpkg
+      - URBIS_3D_CONSTRUCTION_GEO_PACKAGE_PATH=/data/UrbISBuildings3D_04000.gpkg
+    volumes:
+      - ./backend/app:/code/app
+      - ./data:/data:ro
+    command: >
+      sh -c "python -m debugpy --wait-for-client --listen 0.0.0.0:5676 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    #sh -c "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    profiles:
+      - backend
+    depends_on:
+      - db
+
+  frontend:
+    <<: [*common]
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: urbis_frontend
+    ports:
+      - "5173:5173"
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE=http://backend:8000
+    volumes:
+      - ./frontend:/app
+    command: >
+      sh -c "npx serve -s dist"
+    #sh -c "npm run dev -- --host"
+    depends_on:
+      - backend
+    profiles:
+      - frontend
+
+networks:
+  urbis_building_viewer_network:
+    driver: bridge
+    name: urbis_building_viewer_network
+    attachable: true
+
+volumes:
+  urbis_pgdata:

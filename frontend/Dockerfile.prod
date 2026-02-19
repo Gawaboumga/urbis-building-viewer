@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+
+ARG NODE_VERSION=lts
+
+FROM node:${NODE_VERSION}-alpine AS build
+
+WORKDIR /usr/src/app
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ .
+ARG VITE_API_BASE
+ENV VITE_API_BASE=$VITE_API_BASE
+RUN npm run build
+
+FROM node:${NODE_VERSION}-alpine AS final
+
+WORKDIR /usr/src/app
+
+RUN npm install -g serve
+COPY --from=build /usr/src/app/dist ./dist
+
+EXPOSE 3000
+CMD ["serve", "-s", "dist"]

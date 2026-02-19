@@ -1,0 +1,99 @@
+name: urbis-building-viewer
+
+x-common:
+  &common
+    networks:
+      - urbis_building_viewer_network
+
+services:
+  db:
+    <<: [*common]
+    image: postgis/postgis:18-3.6-alpine
+    container_name: postgis_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${URBIS_USERNAME}
+      POSTGRES_PASSWORD: ${URBIS_PASSWORD}
+      POSTGRES_DB: ${URBIS_DB}
+    volumes:
+      - urbis_pgdata:/var/lib/postgresql
+
+  nginx:
+    <<: [*common]
+    image: nginx:mainline-alpine
+    container_name: urbis_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - acme-challenge:/var/www/acme
+    depends_on:
+      - backend
+      - frontend
+
+  backend:
+    <<: [*common]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.prod
+    container_name: urbis_backend
+    expose:
+      - "8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${URBIS_USERNAME}:${URBIS_PASSWORD}@${URBIS_HOST}:5432/${URBIS_DB}
+      - DNS_NAME=${DNS_NAME}
+      - FORBIDDEN_AREAS_FOLDER=/data/forbidden_areas
+      - URBIS_PARCEL_BUILDING_GEO_PACKAGE_PATH=/data/UrbISBuildings_04000.gpkg
+      - URBIS_3D_CONSTRUCTION_GEO_PACKAGE_PATH=/data/UrbISBuildings3D_04000.gpkg
+    volumes:
+      - ./data:/data:ro
+    command: >
+      sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    restart: always
+
+  frontend:
+    <<: [*common]
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.prod
+      args:
+        VITE_API_BASE: "/api"
+    container_name: urbis_frontend
+    expose:
+      - "3000"
+    restart: always
+
+  certbot:
+    <<: [*common]
+    image: certbot/certbot
+    container_name: urbis_certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - acme-challenge:/var/www/acme
+    command: >
+      certonly --webroot
+             -w /var/www/acme
+             --email ${EMAIL}
+             --agree-tos
+             --no-eff-email
+             --non-interactive
+             -d ${DNS_NAME}
+             -d www.${DNS_NAME}
+
+networks:
+  urbis_building_viewer_network:
+    driver: bridge
+    name: urbis_building_viewer_network
+    attachable: true
+
+volumes:
+  certbot-etc:
+  certbot-var:
+  acme-challenge:
+  urbis_pgdata:

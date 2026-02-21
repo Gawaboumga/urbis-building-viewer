@@ -120,17 +120,57 @@ function addSurfaceLabel(mesh: THREE.Mesh, sizeInMeters = 1.0, offset = 0.02) {
   mesh.userData.label = label;
 }
 
-
 export class PickHelper {
   private raycaster = new THREE.Raycaster();
-  // Keep track of selected meshes
   private selected = new Set<THREE.Mesh>();
   private faceAreas: Record<string, number> = {};
 
-  // Click handler: toggle selection
+  private removeLabel(mesh: THREE.Mesh) {
+    const label = mesh.userData.label as THREE.Object3D | undefined;
+    if (!label) return;
+
+    mesh.remove(label);
+
+    // Dispose resources used by label (plane geometry + materials + texture)
+    label.traverse(obj => {
+      const m = (obj as any).material as THREE.Material | THREE.Material[] | undefined;
+      const g = (obj as any).geometry as THREE.BufferGeometry | undefined;
+
+      if (m) {
+        const materials = Array.isArray(m) ? m : [m];
+        materials.forEach(mat => {
+          // If this material has a texture map, dispose it too
+          const anyMat = mat as any;
+          if (anyMat.map) anyMat.map.dispose?.();
+          mat.dispose();
+        });
+      }
+
+      g?.dispose?.();
+    });
+
+    mesh.userData.label = undefined;
+  }
+
+  private unselectMesh(mesh: THREE.Mesh) {
+    const material = mesh.material as THREE.MeshStandardMaterial;
+
+    // Restore previous color tint
+    if (mesh.userData.originalColor !== undefined) {
+      material.color.setHex(mesh.userData.originalColor);
+    }
+
+    // Remove any label
+    this.removeLabel(mesh);
+
+    // Remove from selected set + area map
+    this.selected.delete(mesh);
+    const id = mesh.geometry.id.toString();
+    delete this.faceAreas[id];
+  }
+
   togglePick(position: THREE.Vector2, scene: THREE.Scene, camera: THREE.Camera) {
     this.raycaster.setFromCamera(position, camera);
-    // Search recursively in groups
     const [hit] = this.raycaster.intersectObjects(scene.children, true);
     if (!hit || !(hit.object instanceof THREE.Mesh)) return;
 
@@ -140,47 +180,29 @@ export class PickHelper {
 
     if (this.selected.has(mesh)) {
       // 🔽 Unselect
-      if (mesh.userData.originalColor !== undefined) {
-        material.color.setHex(mesh.userData.originalColor);
-      }
-      this.selected.delete(mesh);
-      delete this.faceAreas[id];
+      this.unselectMesh(mesh);
       this.updateFaceList();
-
-      if (mesh.userData.label) {
-        mesh.remove(mesh.userData.label);
-        (mesh.userData.label as THREE.Object3D).traverse(obj => {
-          if ((obj as THREE.Mesh).isMesh) {
-            const m = (obj as THREE.Mesh).material as THREE.Material | THREE.Material[];
-            if (Array.isArray(m)) m.forEach(mm => mm.dispose());
-            else m.dispose();
-            (obj as THREE.Mesh).geometry.dispose();
-          }
-        });
-        mesh.userData.label = undefined;
-      }
-
-    } else {
-      // 🔼 Select
-      mesh.userData.originalColor = material.color.getHex();
-      material.color.setHex(0x00ff00);
-
-      const area = mesh.userData.dbArea ?? this.computeArea3D(mesh.geometry);
-      this.faceAreas[id] = area;
-      this.selected.add(mesh);
-      this.updateFaceList();
-      addSurfaceLabel(mesh, /*sizeInMeters=*/1.2, /*offset=*/0.03);
+      return;
     }
+
+    // 🔼 Select
+    mesh.userData.originalColor = material.color.getHex();
+    material.color.setHex(0x00ff00);
+
+    const area = mesh.userData.dbArea ?? this.computeArea3D(mesh.geometry);
+    this.faceAreas[id] = area;
+    this.selected.add(mesh);
+
+    this.updateFaceList();
+    addSurfaceLabel(mesh, /*sizeInMeters=*/1.2, /*offset=*/0.03);
   }
 
-  // Optional: clear all selections programmatically
+  // ✅ Clear all selections programmatically
   clearAllSelections() {
-    for (const mesh of this.selected) {
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      if (mesh.userData.originalColor !== undefined) {
-        material.color.setHex(mesh.userData.originalColor);
-      }
-    }
+    // Copy to array to avoid any iterator weirdness while deleting
+    const all = Array.from(this.selected);
+    all.forEach(mesh => this.unselectMesh(mesh));
+
     this.selected.clear();
     this.faceAreas = {};
     this.updateFaceList();
@@ -277,6 +299,10 @@ export class BuildingViewer {
 
     this.setupPicker();
     this.animate();
+  }
+
+  public clearSelectedFaces() {
+    this.pickHelper.clearAllSelections();
   }
 
   public destroy = () => {

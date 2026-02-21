@@ -1,40 +1,50 @@
-
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { BuildingViewer } from './BuildingViewer';
 
 interface BuildingViewerProps {
   buildingSolid: any;
 }
 
-const BuildingViewerComponent: React.FC<BuildingViewerProps> = ({ buildingSolid }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<BuildingViewer | null>(null);
+export interface BuildingViewerHandle {
+  clearSelectedFaces: () => void;
+}
 
-  useEffect(() => {
-    if (!viewerRef.current && containerRef.current && buildingSolid) {
-      viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
-    }
-    return () => {
-      viewerRef.current?.destroy();
-      viewerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // empty deps → run once
+const BuildingViewerComponent = forwardRef<BuildingViewerHandle, BuildingViewerProps>(
+  ({ buildingSolid }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const viewerRef = useRef<BuildingViewer | null>(null);
 
-  useEffect(() => {
-    if (viewerRef.current && buildingSolid) {
-      //viewerRef.current.updateBuilding(buildingSolid);
-    } else if (!viewerRef.current && containerRef.current && buildingSolid) {
-      viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
-    }
-  }, [buildingSolid]);
+    useImperativeHandle(ref, () => ({
+      clearSelectedFaces: () => {
+        viewerRef.current?.clearSelectedFaces();
+      },
+    }));
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '500px', border: '1px solid #ccc' }}
-    />
-  );
-};
+    useEffect(() => {
+      if (!viewerRef.current && containerRef.current && buildingSolid) {
+        viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
+      }
+      return () => {
+        viewerRef.current?.destroy();
+        viewerRef.current = null;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+      if (!viewerRef.current && containerRef.current && buildingSolid) {
+        viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
+      }
+      // if you later re-enable updateBuilding, you can call it here
+    }, [buildingSolid]);
+
+    return (
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: '500px', border: '1px solid #ccc' }}
+      />
+    );
+  }
+);
 
 export default BuildingViewerComponent;

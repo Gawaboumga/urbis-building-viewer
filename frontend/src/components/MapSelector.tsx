@@ -102,7 +102,6 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
             distance,
             LEAFLET_SRID,
             LEAFLET_SRID,
-            controller.signal
           );
 
           // Safeguard shape
@@ -148,7 +147,6 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
           north,
           LEAFLET_SRID,
           LEAFLET_SRID,
-          controller.signal
         );
 
         const isFeatureCollection =

@@ -88,7 +88,7 @@ export async function getBuildingSolidsByBbox(
   north: number,
   sourceSRID: number,
   destinationSRID: number,
-): Promise<BuildingSolidType[]> {
+): Promise<BuildingSolidType> {
   const res = await fetch(`${BASE_URL}/urbis_3d/bbox`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { BuildingViewer } from './BuildingViewer';
 
 interface BuildingViewerProps {

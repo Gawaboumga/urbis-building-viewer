@@ -150,6 +150,7 @@ function addSurfaceLabel(mesh: THREE.Mesh, sizeInMeters = 1.0, offset = 0.02) {
 
 class MeasureDrawHelper {
   private raycaster = new THREE.Raycaster();
+  private scene: THREE.Scene;
 
   private activeMesh: THREE.Mesh | null = null;
   private points: THREE.Vector3[] = [];
@@ -170,7 +171,8 @@ class MeasureDrawHelper {
   private readonly lineColor = 0xff3333;
   private readonly areaLabelOffset = 0.05; // a bit above the surface
 
-  constructor(private scene: THREE.Scene) {
+  constructor(scene: THREE.Scene) {
+    this.scene = scene;
     this.scene.add(this.overlay);
   }
 

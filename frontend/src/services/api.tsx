@@ -81,6 +81,27 @@ export async function getBuildingSolidsByDistance(
   return res.json();
 }
 
+export async function getBuildingSolidsByBbox(
+  west: number,
+  south: number,
+  east: number,
+  north: number,
+  sourceSRID: number,
+  destinationSRID: number,
+): Promise<BuildingSolidType[]> {
+  const res = await fetch(`${BASE_URL}/urbis_3d/bbox`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ west: west, south: south, east: east, north: north,
+      source_srid: sourceSRID, destination_srid: destinationSRID,
+      predicate: 'within'
+    }),
+  });
+
+  if (!res.ok) throw new Error('Failed to fetch building solids');
+  return res.json();
+}
+
 export async function getBuildingSolid(
   buildingSolidId: number,
   options: {

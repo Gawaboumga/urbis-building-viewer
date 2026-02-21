@@ -6,8 +6,8 @@ from app.schemas import requests, responses
 from app.utils import compute_polygon_area, transform_geometry
 from fastapi import APIRouter, Depends
 from geoalchemy2.shape import from_shape, to_shape
-from geoalchemy2.functions import ST_DWithin, ST_Distance
-from shapely.geometry import mapping, Point
+from geoalchemy2.functions import ST_DWithin, ST_Distance, ST_Intersects, ST_Within
+from shapely.geometry import mapping, Point, box
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
@@ -60,6 +60,64 @@ async def get_building_solid(building_solid: requests.BuildingSolid, db: AsyncSe
         features=features
     )
 
+@api_router.post('/bbox')
+async def search_building_solids_by_bbox(
+    search: requests.SearchBuildingSolidByBbox,
+    db: AsyncSession = Depends(get_db)
+) -> responses.FeatureCollection:
+    """
+    Return all BuildingSolid features that intersect (default) or are fully within
+    the provided bounding box.
+    """
+
+    if search.limit is None or search.limit < 0 or search.limit > 50:
+        search.limit = 50
+
+    # 1) Create shapely bbox polygon in the input/source CRS
+    bbox_poly = box(search.west, search.south, search.east, search.north)
+
+    # 2) Transform bbox to Lambert 72 (DB storage SRID) if needed
+    if search.source_srid is not None:
+        bbox_poly = transform_geometry(bbox_poly, search.source_srid, LAMBERT_72_SRID)
+
+    bbox_geom = from_shape(bbox_poly, srid=LAMBERT_72_SRID)
+
+    # 3) Build query predicate
+    if search.predicate == "within":
+        spatial_filter = ST_Within(BuildingSolid.geometry, bbox_geom)
+    else:
+        # Default: intersects (returns buildings crossing the rectangle boundary too)
+        spatial_filter = ST_Intersects(BuildingSolid.geometry, bbox_geom)
+
+    stmt = select(BuildingSolid).where(spatial_filter)
+
+    if search.limit is not None:
+        stmt = stmt.limit(search.limit)
+
+    rows = await db.execute(stmt)
+
+    # 4) Build GeoJSON features (transform to destination SRID if requested)
+    features = []
+    for (building,) in rows:
+        geom = to_shape(building.geometry)
+
+        if search.destination_srid is not None:
+            geom = transform_geometry(geom, LAMBERT_72_SRID, search.destination_srid)
+
+        features.append(
+            responses.Feature(
+                type='Feature',
+                geometry=mapping(geom),
+                properties={
+                    'building_solid_id': building.building_solid_id
+                }
+            )
+        )
+
+    return responses.FeatureCollection(
+        type='FeatureCollection',
+        features=features
+    )
 
 @api_router.post('/nearby')
 async def search_building_solid_by_distance(search: requests.SearchBuildingSolidByDistance, db: AsyncSession = Depends(get_db)) -> responses.FeatureCollection:

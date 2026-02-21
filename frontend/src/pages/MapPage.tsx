@@ -12,7 +12,7 @@ const MapPage: React.FC = () => {
         <SearchBar onSelectAddresses={setSelectedAddresses} />
         <MapSelector selectedAddresses={selectedAddresses} />
         <p className="map-hint">
-          💡 Right-click anywhere on the map to display nearby buildings.
+          💡 Right-click anywhere on the map to display nearby buildings or select an area with shift + left click.
         </p>
       </div>
     </div>

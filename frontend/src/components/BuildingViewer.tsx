@@ -36,6 +36,34 @@ export function projectPolygonTo2D(points3D: THREE.Vector3[], normal: THREE.Vect
   return { points2D, centroid, xAxis, yAxis };
 }
 
+
+function shoelaceArea(points: THREE.Vector2[]): number {
+  let area = 0;
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const { x: x1, y: y1 } = points[i];
+    const { x: x2, y: y2 } = points[(i + 1) % n];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area) / 2;
+}
+
+function computeArea3D(geometry: THREE.BufferGeometry): number {
+  const positions = geometry.getAttribute('position').array as Float32Array;
+  const vertices = toVector3Array(positions);
+  const normal = computeNormal(vertices);
+  const { points2D } = projectPolygonTo2D(vertices, normal);
+  return shoelaceArea(points2D);
+}
+
+function toVector3Array(array: Float32Array): THREE.Vector3[] {
+  const vectors: THREE.Vector3[] = [];
+  for (let i = 0; i < array.length; i += 3) {
+    vectors.push(new THREE.Vector3(array[i], array[i + 1], array[i + 2]));
+  }
+  return vectors;
+}
+
 function makeTextCanvas(text: string, opts?: { font?: string; padding?: number; fillStyle?: string; strokeStyle?: string; lineWidth?: number; bg?: string }) {
   const {
     font = '24px Arial',
@@ -120,6 +148,339 @@ function addSurfaceLabel(mesh: THREE.Mesh, sizeInMeters = 1.0, offset = 0.02) {
   mesh.userData.label = label;
 }
 
+class MeasureDrawHelper {
+  private raycaster = new THREE.Raycaster();
+
+  private activeMesh: THREE.Mesh | null = null;
+  private points: THREE.Vector3[] = [];
+  private closed = false;
+
+  // visuals
+  private overlay = new THREE.Group();
+  private line: THREE.Line | null = null;
+  private pointMeshes: THREE.Mesh[] = [];
+  private edgeLabels: THREE.Object3D[] = [];
+
+  private areaLabel: THREE.Object3D | null = null;
+
+  // tweakables
+  private readonly pointSize = 0.15;
+  private readonly labelOffset = 0.03;   // offset above surface
+  private readonly closeThreshold = 0.6; // distance in world units to "snap close"
+  private readonly lineColor = 0xff3333;
+  private readonly areaLabelOffset = 0.05; // a bit above the surface
+
+  constructor(private scene: THREE.Scene) {
+    this.scene.add(this.overlay);
+  }
+
+  public destroy() {
+    this.clear();
+    this.scene.remove(this.overlay);
+  }
+
+  public clear() {
+    this.closed = false;
+    this.activeMesh = null;
+    this.points = [];
+
+    // dispose visuals
+    if (this.line) {
+      this.line.geometry.dispose();
+      (this.line.material as THREE.Material).dispose();
+      this.overlay.remove(this.line);
+      this.line = null;
+    }
+
+    if (this.areaLabel) {
+      this.disposeObject(this.areaLabel);
+      this.overlay.remove(this.areaLabel);
+      this.areaLabel = null;
+    }
+
+    this.pointMeshes.forEach(pm => {
+      pm.geometry.dispose();
+      (pm.material as THREE.Material).dispose();
+      this.overlay.remove(pm);
+    });
+    this.pointMeshes = [];
+
+    this.edgeLabels.forEach(lbl => {
+      // dispose label materials/geometry/texture
+      lbl.traverse(obj => {
+        const anyObj = obj as any;
+        const g = anyObj.geometry as THREE.BufferGeometry | undefined;
+        const m = anyObj.material as THREE.Material | THREE.Material[] | undefined;
+        if (m) {
+          const mats = Array.isArray(m) ? m : [m];
+          mats.forEach(mat => {
+            const anyMat = mat as any;
+            if (anyMat.map) anyMat.map.dispose?.();
+            mat.dispose();
+          });
+        }
+        g?.dispose?.();
+      });
+      this.overlay.remove(lbl);
+    });
+    this.edgeLabels = [];
+  }
+
+  /**
+   * Shift+Click adds points on a mesh surface (intersection).
+   * If user clicks near the first point and has >=3 points => close polygon.
+   */
+  public addPointFromNDC(ndc: THREE.Vector2, scene: THREE.Scene, camera: THREE.Camera) {
+    if (this.closed) {
+      // start a new shape automatically after closed
+      this.clear();
+    }
+
+    this.raycaster.setFromCamera(ndc, camera);
+    const [hit] = this.raycaster.intersectObjects(scene.children, true);
+    if (!hit || !(hit.object instanceof THREE.Mesh)) return;
+
+    const mesh = hit.object as THREE.Mesh;
+
+    // only allow drawing on a single surface at a time
+    if (!this.activeMesh) this.activeMesh = mesh;
+
+    const p = hit.point.clone();
+
+    // close if near first point and enough points
+    if (this.points.length >= 3) {
+      const first = this.points[0];
+      if (p.distanceTo(first) <= this.closeThreshold) {
+        this.closed = true;
+        this.updateVisuals();
+        return;
+      }
+    }
+
+    if (this.activeMesh !== mesh) {
+      // if clicking another mesh, start a new shape on that mesh
+      this.clear();
+      this.activeMesh = mesh;
+    }
+
+    this.points.push(p);
+    this.addPointMarker(p);
+    this.updateVisuals();
+  }
+
+  private addPointMarker(p: THREE.Vector3) {
+    const geom = new THREE.SphereGeometry(this.pointSize, 12, 12);
+    const mat = new THREE.MeshBasicMaterial({ color: this.lineColor });
+    const m = new THREE.Mesh(geom, mat);
+    m.position.copy(p);
+    this.pointMeshes.push(m);
+    this.overlay.add(m);
+  }
+
+  private updateAreaLabel() {
+    // Remove any existing area label
+    if (this.areaLabel) {
+      this.disposeObject(this.areaLabel);
+      this.overlay.remove(this.areaLabel);
+      this.areaLabel = null;
+    }
+
+    if (!this.closed || this.points.length < 3 || !this.activeMesh) return;
+
+    // Use the surface normal from the mesh if available
+    const normal = this.getSurfaceNormalWorld(this.activeMesh);
+
+    // Project drawn 3D points to 2D in the polygon plane
+    const { points2D, centroid, xAxis, yAxis } = projectPolygonTo2D(this.points, normal);
+
+    // Compute area in m² (assuming your world units are meters)
+    const area = shoelaceArea(points2D);
+
+    const text = `${area.toFixed(2)} m²`;
+
+    // Make a label plane (same approach as your edge labels)
+    const canvas = makeTextCanvas(text, {
+      font: '36px Arial',
+      fillStyle: '#111',
+      strokeStyle: '#fff',
+      lineWidth: 6,
+      bg: 'rgba(255,255,255,0.70)'
+    });
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.anisotropy = 4;
+
+    const aspect = canvas.width / canvas.height;
+    const height = 1.1;
+    const width = height * aspect;
+
+    const geom = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+
+    const plane = new THREE.Mesh(geom, mat);
+    plane.raycast = () => {}; // ignore picking
+
+    // Orient the label so it lies on the surface plane
+    const basis = new THREE.Matrix4().makeBasis(
+      xAxis.clone().normalize(),
+      yAxis.clone().normalize(),
+      normal.clone().normalize()
+    );
+    plane.quaternion.setFromRotationMatrix(basis);
+
+    // Position slightly above the surface to avoid z-fighting
+    plane.position.copy(centroid.clone().add(normal.clone().normalize().multiplyScalar(this.areaLabelOffset)));
+
+    this.areaLabel = plane;
+    this.overlay.add(plane);
+  }
+
+  private updateVisuals() {
+    this.updateLine();
+    this.updateEdgeLabels();
+    this.updateAreaLabel();
+  }
+
+  private updateLine() {
+    const pts = this.closed ? [...this.points, this.points[0]] : this.points;
+    if (pts.length < 2) return;
+
+    const geom = new THREE.BufferGeometry().setFromPoints(pts);
+
+    if (!this.line) {
+      const mat = new THREE.LineBasicMaterial({ color: this.lineColor });
+      this.line = new THREE.Line(geom, mat);
+      this.overlay.add(this.line);
+    } else {
+      this.line.geometry.dispose();
+      this.line.geometry = geom;
+    }
+  }
+
+  private updateEdgeLabels() {
+    // remove existing labels
+    this.edgeLabels.forEach(lbl => {
+      lbl.traverse(obj => {
+        const anyObj = obj as any;
+        const g = anyObj.geometry as THREE.BufferGeometry | undefined;
+        const m = anyObj.material as THREE.Material | THREE.Material[] | undefined;
+        if (m) {
+          const mats = Array.isArray(m) ? m : [m];
+          mats.forEach(mat => {
+            const anyMat = mat as any;
+            if (anyMat.map) anyMat.map.dispose?.();
+            mat.dispose();
+          });
+        }
+        g?.dispose?.();
+      });
+      this.overlay.remove(lbl);
+    });
+    this.edgeLabels = [];
+
+    if (this.points.length < 2) return;
+
+    const normal = this.getSurfaceNormalWorld(this.activeMesh);
+
+    // build segments
+    const segPts = this.closed ? [...this.points, this.points[0]] : this.points;
+
+    for (let i = 0; i < segPts.length - 1; i++) {
+      const a = segPts[i];
+      const b = segPts[i + 1];
+      const dist = a.distanceTo(b);
+
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+
+      const label = this.makeEdgeLabel(`${dist.toFixed(2)} m`, a, b, normal, mid);
+      this.edgeLabels.push(label);
+      this.overlay.add(label);
+    }
+  }
+
+  /**
+   * Try to get the surface normal in world coordinates.
+   * Uses your stored labelInfo.normal when possible.
+   */
+  private getSurfaceNormalWorld(mesh: THREE.Mesh | null): THREE.Vector3 {
+    if (!mesh) return new THREE.Vector3(0, 1, 0);
+
+    const info = mesh.userData.labelInfo as any;
+    if (info?.normal) return (info.normal as THREE.Vector3).clone().normalize();
+
+    // fallback: mesh's world "up" normal-ish
+    const n = new THREE.Vector3(0, 1, 0);
+    n.applyQuaternion(mesh.getWorldQuaternion(new THREE.Quaternion()));
+    return n.normalize();
+  }
+
+  /**
+   * Creates a small plane label oriented on the surface,
+   * aligned roughly with the edge direction.
+   */
+  private makeEdgeLabel(
+    text: string,
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    normal: THREE.Vector3,
+    midpoint: THREE.Vector3
+  ) {
+    const canvas = makeTextCanvas(text, {
+      font: '28px Arial',
+      fillStyle: '#111',
+      strokeStyle: '#fff',
+      lineWidth: 6,
+      bg: 'rgba(255,255,255,0.65)'
+    });
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.anisotropy = 4;
+
+    const aspect = canvas.width / canvas.height;
+    const height = 0.9;
+    const width = height * aspect;
+
+    const geom = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+
+    const plane = new THREE.Mesh(geom, mat);
+    plane.raycast = () => {}; // ignore picking on labels
+
+    // Orientation basis:
+    const xAxis = b.clone().sub(a).normalize();
+    let yAxis = new THREE.Vector3().crossVectors(normal, xAxis).normalize();
+    if (yAxis.length() < 1e-6) yAxis = new THREE.Vector3(0, 1, 0);
+
+    const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, normal.clone().normalize());
+    plane.quaternion.setFromRotationMatrix(basis);
+
+    // place above the surface to avoid z-fighting
+    plane.position.copy(midpoint.clone().add(normal.clone().normalize().multiplyScalar(this.labelOffset)));
+
+    return plane;
+  }
+
+  private disposeObject(obj: THREE.Object3D) {
+    obj.traverse(o => {
+      const anyO = o as any;
+      const g = anyO.geometry as THREE.BufferGeometry | undefined;
+      const m = anyO.material as THREE.Material | THREE.Material[] | undefined;
+
+      if (m) {
+        const mats = Array.isArray(m) ? m : [m];
+        mats.forEach(mat => {
+          const anyMat = mat as any;
+          if (anyMat.map) anyMat.map.dispose?.();
+          mat.dispose();
+        });
+      }
+      g?.dispose?.();
+    });
+  }
+}
+
 export class PickHelper {
   private raycaster = new THREE.Raycaster();
   private selected = new Set<THREE.Mesh>();
@@ -189,7 +550,7 @@ export class PickHelper {
     mesh.userData.originalColor = material.color.getHex();
     material.color.setHex(0x00ff00);
 
-    const area = mesh.userData.dbArea ?? this.computeArea3D(mesh.geometry);
+    const area = mesh.userData.dbArea ?? computeArea3D(mesh.geometry);
     this.faceAreas[id] = area;
     this.selected.add(mesh);
 
@@ -232,33 +593,6 @@ export class PickHelper {
     list.appendChild(totalLi);
   }
 
-  private shoelaceArea(points: THREE.Vector2[]): number {
-    let area = 0;
-    const n = points.length;
-    for (let i = 0; i < n; i++) {
-      const { x: x1, y: y1 } = points[i];
-      const { x: x2, y: y2 } = points[(i + 1) % n];
-      area += x1 * y2 - x2 * y1;
-    }
-    return Math.abs(area) / 2;
-  }
-
-  private computeArea3D(geometry: THREE.BufferGeometry): number {
-    const positions = geometry.getAttribute('position').array as Float32Array;
-    const vertices = this.toVector3Array(positions);
-    const normal = computeNormal(vertices);
-    const { points2D } = projectPolygonTo2D(vertices, normal);
-    return this.shoelaceArea(points2D);
-  }
-
-  private toVector3Array(array: Float32Array): THREE.Vector3[] {
-    const vectors: THREE.Vector3[] = [];
-    for (let i = 0; i < array.length; i += 3) {
-      vectors.push(new THREE.Vector3(array[i], array[i + 1], array[i + 2]));
-    }
-    return vectors;
-  }
-
   computeVolume(geometry: THREE.BufferGeometry): number {
     const geom = geometry.toNonIndexed();
     const pos = geom.attributes.position;
@@ -282,6 +616,7 @@ export class BuildingViewer {
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private pickHelper = new PickHelper();
+  private measureHelper: MeasureDrawHelper;
 
   constructor(container: HTMLElement, buildingSolid: any) {
     this.camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
@@ -297,15 +632,19 @@ export class BuildingViewer {
     this.scene.add(new THREE.AmbientLight(0xffffff));
     this.scene.add(this.createMeshFromGeoJSON(buildingSolid));
 
+    this.measureHelper = new MeasureDrawHelper(this.scene);
+
     this.setupPicker();
     this.animate();
   }
 
   public clearSelectedFaces() {
     this.pickHelper.clearAllSelections();
+    this.measureHelper.clear();
   }
 
   public destroy = () => {
+    this.measureHelper?.destroy();
     this.container.removeChild(this.renderer.domElement);
   }
 
@@ -483,16 +822,27 @@ export class BuildingViewer {
     };
 
     canvas.addEventListener('click', (event: MouseEvent) => {
-        // Only left button (0)
-        if (event.button !== 0) return;
+      // Only left button (0)
+      if (event.button !== 0) return;
 
-        const pos = getCanvasRelativePosition(event);
-        const ndc = new THREE.Vector2(
-          (pos.x / canvas.width) * 2 - 1,
-          -(pos.y / canvas.height) * 2 + 1
-        );
+      const pos = getCanvasRelativePosition(event);
+      const ndc = new THREE.Vector2(
+        (pos.x / canvas.width) * 2 - 1,
+        -(pos.y / canvas.height) * 2 + 1
+      );
 
+      if (event.shiftKey) {
+        // ✅ SHIFT + LEFT CLICK => draw / measure
+        this.measureHelper.addPointFromNDC(ndc, this.scene, this.camera);
+      } else {
+        // ✅ normal click => face selection
         this.pickHelper.togglePick(ndc, this.scene, this.camera);
-      });
+      }
+    });
+
+    // Optional: ESC clears current measurement drawing
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.measureHelper.clear();
+    });
   }
 }

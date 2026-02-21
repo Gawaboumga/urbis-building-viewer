@@ -43,7 +43,12 @@ const BuildingPage: React.FC = () => {
 
         <div id="faces" className="faces-section p-3" style={{ minWidth: '250px' }}>
           <div className="d-flex justify-content-between align-items-center mb-2">
-            <h5 className="m-0">List of faces
+            <h5 className="m-0">List of faces</h5>
+          </div>
+
+          <ul id="faceList" className="list-group" />
+
+            <h5>Clear everything
               <span
                 onClick={buildingSolid ? handleClearSelectedFaces : undefined}
                 title="Clear selected faces"
@@ -57,14 +62,12 @@ const BuildingPage: React.FC = () => {
                 ❌
               </span>
             </h5>
-          </div>
-
-          <ul id="faceList" className="list-group" />
         </div>
       </div>
 
       <div className="info-banner p-3 border-bottom">
         <h4>You can rotate with left click, move with right click and zoom with mouse wheel</h4>
+        <h4>if you SHIFT + left click, you can draw a custom area or get distance between points</h4>
       </div>
     </div>
   );

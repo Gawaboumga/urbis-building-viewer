@@ -15,13 +15,22 @@ const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 // Progressive search radii (meters or unit expected by the API)
 const SEARCH_RADII = [10, 20, 30, 40, 50, 75, 100];
 
-// Marker style
+// Marker style (default)
 const FOUND_MARKER_STYLE: L.CircleMarkerOptions = {
   radius: 6,
   color: 'green',
   weight: 2,
   fillColor: '#2ecc71',
   fillOpacity: 0.8,
+};
+
+// Marker style (selected)
+const SELECTED_MARKER_STYLE: L.CircleMarkerOptions = {
+  radius: 7,
+  color: '#ff2d55',
+  weight: 3,
+  fillColor: '#ff2d55',
+  fillOpacity: 0.9,
 };
 
 // Temporary search indicator style
@@ -55,6 +64,13 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
   const selectionRectRef = useRef<L.Rectangle | null>(null);
   const selectionStartRef = useRef<L.LatLng | null>(null);
   const selectingRef = useRef(false);
+
+  // Multi-selection state (markers -> ids)
+  const selectedIdsRef = useRef<Set<string | number>>(new Set());
+  const selectedMarkersRef = useRef<Map<string | number, L.CircleMarker>>(new Map());
+
+  // Leaflet control button
+  const openSelectedControlRef = useRef<L.Control | null>(null);
 
   // ---- Helpers -----------------------------------------------------------
 
@@ -101,7 +117,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
             lat,
             distance,
             LEAFLET_SRID,
-            LEAFLET_SRID,
+            LEAFLET_SRID
           );
 
           // Safeguard shape
@@ -146,7 +162,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
           east,
           north,
           LEAFLET_SRID,
-          LEAFLET_SRID,
+          LEAFLET_SRID
         );
 
         const isFeatureCollection =
@@ -165,12 +181,79 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     [cancelOngoingRequest]
   );
 
+  const clearSelection = useCallback(() => {
+    // revert styles of previously selected markers
+    for (const marker of selectedMarkersRef.current.values()) {
+      marker.setStyle(FOUND_MARKER_STYLE);
+    }
+    selectedMarkersRef.current.clear();
+    selectedIdsRef.current.clear();
+  }, []);
+
+  const updateMarkerSelectionStyle = useCallback((marker: L.CircleMarker, selected: boolean) => {
+    marker.setStyle(selected ? SELECTED_MARKER_STYLE : FOUND_MARKER_STYLE);
+    // bring selected marker on top if possible
+    const anyMarker = marker as any;
+    if (selected && typeof anyMarker.bringToFront === 'function') anyMarker.bringToFront();
+  }, []);
+
+  /**
+   * Toggle selection for a marker id.
+   * - If additive=false (no Ctrl/Cmd), selection is replaced (single-select).
+   * - If additive=true, selection is toggled (multi-select).
+   */
+  const toggleSelection = useCallback(
+    (id: string | number, marker: L.CircleMarker, additive: boolean) => {
+      const selectedIds = selectedIdsRef.current;
+
+      // Replace selection when not additive
+      if (!additive) {
+        // If clicking the same already-selected marker, keep it selected (still "replace")
+        // but we can treat it as single-select "focus".
+        if (!(selectedIds.size === 1 && selectedIds.has(id))) {
+          clearSelection();
+        }
+      }
+
+      if (selectedIds.has(id)) {
+        // If additive: allow toggling off
+        // If not additive: we already cleared others, so toggling off would mean empty selection;
+        // choose behavior: keep it selected when not additive.
+        if (additive) {
+          selectedIds.delete(id);
+          selectedMarkersRef.current.delete(id);
+          updateMarkerSelectionStyle(marker, false);
+        } else {
+          // keep selected
+          selectedIds.add(id);
+          selectedMarkersRef.current.set(id, marker);
+          updateMarkerSelectionStyle(marker, true);
+        }
+      } else {
+        selectedIds.add(id);
+        selectedMarkersRef.current.set(id, marker);
+        updateMarkerSelectionStyle(marker, true);
+      }
+    },
+    [clearSelection, updateMarkerSelectionStyle]
+  );
+
+  const openSelectedBuildings = useCallback(() => {
+    const ids = Array.from(selectedIdsRef.current);
+    if (ids.length === 0) return;
+    const csv = ids.join(',');
+    window.open(`/building/${csv}`, '_blank', 'noreferrer');
+  }, []);
+
   const renderFeatures = useCallback(
     (data: BuildingSolidType) => {
       const layer = markersLayerRef.current;
       if (!layer) return;
 
       clearMarkers();
+
+      // Reset selection whenever we re-render a new result set
+      clearSelection();
 
       data.features.forEach((feature) => {
         const { coordinates } = feature.geometry as any;
@@ -179,17 +262,47 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
 
         const latLng = new L.LatLng(y, x);
 
-        const marker = L.circleMarker(latLng, FOUND_MARKER_STYLE).bindPopup(
-          `<a href=/building/${buildingSolidId} target="_blank" rel="noreferrer">Building Solid: ${buildingSolidId}</a>`
-        );
+        const marker = L.circleMarker(latLng, FOUND_MARKER_STYLE);
 
         // Attach id for potential later use
         (marker as any).__buildingSolidId = buildingSolidId;
 
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          const oe = e.originalEvent as MouseEvent | undefined;
+          const additive = !!oe && (oe.ctrlKey || oe.metaKey); // Ctrl on Win/Linux, Cmd on Mac
+
+          toggleSelection(buildingSolidId, marker, additive);
+
+          const selected = Array.from(selectedIdsRef.current);
+          const csv = selected.join(',');
+
+          const popupHtml = `
+            <div style="font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto;">
+              <div><strong>Building:</strong> ${buildingSolidId}</div>
+              <div style="margin-top: 6px;"><strong>Selected:</strong> ${selected.length}</div>
+
+              <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                ${
+                  selected.length > 0
+                    ? `<a href="/building/${csv}" target="_blank" rel="noreferrer">Open selected</a>`
+                    : ''
+                }
+                <a href="/building/${buildingSolidId}" target="_blank" rel="noreferrer">Open only this</a>
+              </div>
+
+              <div style="margin-top: 8px; color: #666; font-size: 12px;">
+                Tip: Click replaces selection • Ctrl/Cmd+Click multi-select
+              </div>
+            </div>
+          `;
+
+          marker.bindPopup(popupHtml).openPopup();
+        });
+
         marker.addTo(layer);
       });
     },
-    [clearMarkers]
+    [clearMarkers, clearSelection, toggleSelection]
   );
 
   const clearSelectionRectangle = useCallback(() => {
@@ -225,6 +338,31 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     // Dedicated layer group for markers
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
+
+    // Add a small Leaflet control to open selected buildings
+    const OpenSelectedControl = (L.Control as any).extend({
+      onAdd: () => {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const btn = L.DomUtil.create('a', '', container);
+
+        btn.href = '#';
+        btn.title = 'Open selected buildings';
+        btn.innerHTML = 'Open';
+
+        // Prevent clicks from affecting the map
+        L.DomEvent.disableClickPropagation(container);
+
+        L.DomEvent.on(btn, 'click', (ev: Event) => {
+          L.DomEvent.preventDefault(ev);
+          openSelectedBuildings();
+        });
+
+        return container;
+      },
+    });
+
+    openSelectedControlRef.current = new OpenSelectedControl({ position: 'topright' });
+    openSelectedControlRef.current.addTo(map);
 
     // Right-click handler (existing behavior)
     const onContextMenu = async (e: L.LeafletMouseEvent) => {
@@ -291,9 +429,9 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       const bounds = L.latLngBounds(selectionStartRef.current, end);
 
       // Optional: ignore very small drags
-      const pixelSize = map.latLngToContainerPoint(bounds.getNorthEast()).distanceTo(
-        map.latLngToContainerPoint(bounds.getSouthWest())
-      );
+      const pixelSize = map
+        .latLngToContainerPoint(bounds.getNorthEast())
+        .distanceTo(map.latLngToContainerPoint(bounds.getSouthWest()));
       if (pixelSize < 6) {
         clearSelectionRectangle();
         return;
@@ -355,6 +493,11 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       clearSelectionRectangle();
       cancelOngoingRequest();
 
+      if (openSelectedControlRef.current) {
+        openSelectedControlRef.current.remove();
+        openSelectedControlRef.current = null;
+      }
+
       if (markersLayerRef.current) {
         markersLayerRef.current.remove();
         markersLayerRef.current = null;
@@ -363,6 +506,10 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
         searchIndicatorRef.current.remove();
         searchIndicatorRef.current = null;
       }
+
+      // clear selection refs
+      selectedMarkersRef.current.clear();
+      selectedIdsRef.current.clear();
 
       map.remove();
       mapRef.current = null;
@@ -375,6 +522,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     progressiveFetch,
     renderFeatures,
     setSearchIndicator,
+    openSelectedBuildings,
   ]);
 
   // Focus and fetch progressively for selected addresses (existing behavior)

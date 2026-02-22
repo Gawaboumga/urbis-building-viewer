@@ -54,6 +54,59 @@ interface Props {
   selectedAddresses?: Address[];
 }
 
+// ---------- Helpers (type-safe feature extraction) -------------------------
+
+type MaybeFeature = BuildingSolidType['features'][number];
+
+function isLonLatTuple(v: unknown): v is [number, number] {
+  return (
+    Array.isArray(v) &&
+    v.length >= 2 &&
+    typeof v[0] === 'number' &&
+    typeof v[1] === 'number' &&
+    Number.isFinite(v[0]) &&
+    Number.isFinite(v[1])
+  );
+}
+
+function getFeatureLonLat(feature: MaybeFeature): [number, number] | null {
+  const geom = (feature as any)?.geometry;
+  const coords = geom?.coordinates;
+  if (!isLonLatTuple(coords)) return null;
+  return [coords[0], coords[1]];
+}
+
+function getBuildingSolidId(feature: MaybeFeature): string | number | null {
+  const props = (feature as any)?.properties;
+  const id = props?.building_solid_id;
+  if (typeof id === 'string' || typeof id === 'number') return id;
+  return null;
+}
+
+function isFeatureCollection(data: unknown): data is BuildingSolidType {
+  return (
+    !!data &&
+    typeof data === 'object' &&
+    (data as any).type === 'FeatureCollection' &&
+    Array.isArray((data as any).features)
+  );
+}
+
+function dedupeFeaturesById(features: MaybeFeature[]): MaybeFeature[] {
+  const seen = new Set<string | number>();
+  const out: MaybeFeature[] = [];
+  for (const f of features) {
+    const id = getBuildingSolidId(f);
+    if (id == null) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(f);
+  }
+  return out;
+}
+
+// ---------- Component ------------------------------------------------------
+
 const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -65,36 +118,16 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
   const selectionStartRef = useRef<L.LatLng | null>(null);
   const selectingRef = useRef(false);
 
-  // Multi-selection state (markers -> ids)
+  // Multi-selection state
   const selectedIdsRef = useRef<Set<string | number>>(new Set());
   const selectedMarkersRef = useRef<Map<string | number, L.CircleMarker>>(new Map());
 
-  // Leaflet control button
-  const openSelectedControlRef = useRef<L.Control | null>(null);
+  // Controls
+  const openControlRef = useRef<L.Control | null>(null);
+  const clearControlRef = useRef<L.Control | null>(null);
+  const openControlAnchorRef = useRef<HTMLAnchorElement | null>(null);
 
-  // ---- Helpers -----------------------------------------------------------
-
-  const clearMarkers = useCallback(() => {
-    if (markersLayerRef.current) {
-      markersLayerRef.current.clearLayers();
-    }
-  }, []);
-
-  const setSearchIndicator = useCallback((latlng: L.LatLngExpression | null) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    // Remove previous indicator
-    if (searchIndicatorRef.current) {
-      searchIndicatorRef.current.removeFrom(map);
-      searchIndicatorRef.current = null;
-    }
-
-    // Add new indicator
-    if (latlng) {
-      searchIndicatorRef.current = L.circle(latlng, SEARCH_INDICATOR_STYLE).addTo(map);
-    }
-  }, []);
+  // ---------- Basic helpers ----------------------------
 
   const cancelOngoingRequest = useCallback(() => {
     if (abortRef.current) {
@@ -103,13 +136,91 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     }
   }, []);
 
+  const clearMarkers = useCallback(() => {
+    markersLayerRef.current?.clearLayers();
+  }, []);
+
+  const setSearchIndicator = useCallback((latlng: L.LatLngExpression | null) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (searchIndicatorRef.current) {
+      searchIndicatorRef.current.removeFrom(map);
+      searchIndicatorRef.current = null;
+    }
+
+    if (latlng) {
+      searchIndicatorRef.current = L.circle(latlng, SEARCH_INDICATOR_STYLE).addTo(map);
+    }
+  }, []);
+
+  // ---------- Selection helpers ------------------------
+
+  const updateOpenControlLabel = useCallback(() => {
+    const a = openControlAnchorRef.current;
+    if (!a) return;
+    const count = selectedIdsRef.current.size;
+    a.innerHTML = `Open (${count})`;
+    a.style.opacity = count > 0 ? '1' : '0.5';
+    a.style.pointerEvents = count > 0 ? 'auto' : 'none';
+  }, []);
+
+  const setMarkerSelectedStyle = useCallback((marker: L.CircleMarker, selected: boolean) => {
+    marker.setStyle(selected ? SELECTED_MARKER_STYLE : FOUND_MARKER_STYLE);
+    if (selected && (marker as any).bringToFront) (marker as any).bringToFront();
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    for (const marker of selectedMarkersRef.current.values()) {
+      setMarkerSelectedStyle(marker, false);
+    }
+    selectedMarkersRef.current.clear();
+    selectedIdsRef.current.clear();
+    updateOpenControlLabel();
+  }, [setMarkerSelectedStyle, updateOpenControlLabel]);
+
+  const selectOnly = useCallback(
+    (id: string | number, marker: L.CircleMarker) => {
+      // Replace selection
+      clearSelection();
+      selectedIdsRef.current.add(id);
+      selectedMarkersRef.current.set(id, marker);
+      setMarkerSelectedStyle(marker, true);
+      updateOpenControlLabel();
+    },
+    [clearSelection, setMarkerSelectedStyle, updateOpenControlLabel]
+  );
+
+  const toggleAdditive = useCallback(
+    (id: string | number, marker: L.CircleMarker) => {
+      if (selectedIdsRef.current.has(id)) {
+        selectedIdsRef.current.delete(id);
+        selectedMarkersRef.current.delete(id);
+        setMarkerSelectedStyle(marker, false);
+      } else {
+        selectedIdsRef.current.add(id);
+        selectedMarkersRef.current.set(id, marker);
+        setMarkerSelectedStyle(marker, true);
+      }
+      updateOpenControlLabel();
+    },
+    [setMarkerSelectedStyle, updateOpenControlLabel]
+  );
+
+  const openSelectedBuildings = useCallback(() => {
+    const ids = Array.from(selectedIdsRef.current);
+    if (ids.length === 0) return;
+    window.open(`/building/${ids.join(',')}`, '_blank', 'noreferrer');
+  }, []);
+
+  // ---------- Data fetching ----------------------------
+
   const progressiveFetch = useCallback(
     async (lng: number, lat: number): Promise<BuildingSolidType | null> => {
       cancelOngoingRequest();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      // Try distances progressively until features are found
       for (const distance of SEARCH_RADII) {
         try {
           const data = await getBuildingSolidsByDistance(
@@ -120,19 +231,17 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
             LEAFLET_SRID
           );
 
-          // Safeguard shape
-          const isFeatureCollection =
-            data &&
-            typeof data === 'object' &&
-            (data as any).type === 'FeatureCollection' &&
-            Array.isArray((data as any).features);
-
-          if (isFeatureCollection && (data as any).features.length > 0) {
-            return data as BuildingSolidType;
-          }
-        } catch (err: unknown) {
           if (controller.signal.aborted) return null;
-          // Otherwise continue to next radius
+
+          if (isFeatureCollection(data) && data.features.length > 0) {
+            // Dedupe (cheap safety)
+            return {
+              ...data,
+              features: dedupeFeaturesById(data.features as any),
+            } as BuildingSolidType;
+          }
+        } catch {
+          if (controller.signal.aborted) return null;
         }
       }
       return null;
@@ -140,40 +249,34 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     [cancelOngoingRequest]
   );
 
-  // Fetch everything within a rectangle bbox (west,south,east,north)
   const fetchByBbox = useCallback(
     async (bounds: L.LatLngBounds): Promise<BuildingSolidType | null> => {
       cancelOngoingRequest();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const sw = bounds.getSouthWest(); // lat/lng
-      const ne = bounds.getNorthEast(); // lat/lng
-
-      const west = sw.lng;
-      const south = sw.lat;
-      const east = ne.lng;
-      const north = ne.lat;
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
 
       try {
         const data = await getBuildingSolidsByBbox(
-          west,
-          south,
-          east,
-          north,
+          sw.lng,
+          sw.lat,
+          ne.lng,
+          ne.lat,
           LEAFLET_SRID,
           LEAFLET_SRID
         );
 
-        const isFeatureCollection =
-          data &&
-          typeof data === 'object' &&
-          (data as any).type === 'FeatureCollection' &&
-          Array.isArray((data as any).features);
+        if (controller.signal.aborted) return null;
 
-        if (isFeatureCollection) return data as BuildingSolidType;
-        return null;
-      } catch (err: unknown) {
+        if (!isFeatureCollection(data)) return null;
+
+        return {
+          ...data,
+          features: dedupeFeaturesById(data.features as any),
+        } as BuildingSolidType;
+      } catch {
         if (controller.signal.aborted) return null;
         return null;
       }
@@ -181,68 +284,30 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     [cancelOngoingRequest]
   );
 
-  const clearSelection = useCallback(() => {
-    // revert styles of previously selected markers
-    for (const marker of selectedMarkersRef.current.values()) {
-      marker.setStyle(FOUND_MARKER_STYLE);
-    }
-    selectedMarkersRef.current.clear();
-    selectedIdsRef.current.clear();
-  }, []);
+  // ---------- Rendering markers ------------------------
 
-  const updateMarkerSelectionStyle = useCallback((marker: L.CircleMarker, selected: boolean) => {
-    marker.setStyle(selected ? SELECTED_MARKER_STYLE : FOUND_MARKER_STYLE);
-    // bring selected marker on top if possible
-    const anyMarker = marker as any;
-    if (selected && typeof anyMarker.bringToFront === 'function') anyMarker.bringToFront();
-  }, []);
+  const buildPopupHtml = useCallback((buildingId: string | number) => {
+    const selected = Array.from(selectedIdsRef.current);
+    const csv = selected.join(',');
+    return `
+      <div style="font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto;">
+        <div><strong>Building:</strong> ${buildingId}</div>
+        <div style="margin-top: 6px;"><strong>Selected:</strong> ${selected.length}</div>
 
-  /**
-   * Toggle selection for a marker id.
-   * - If additive=false (no Ctrl/Cmd), selection is replaced (single-select).
-   * - If additive=true, selection is toggled (multi-select).
-   */
-  const toggleSelection = useCallback(
-    (id: string | number, marker: L.CircleMarker, additive: boolean) => {
-      const selectedIds = selectedIdsRef.current;
+        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+          ${
+            selected.length > 0
+              ? `<a href="/building/${csv}" target="_blank" rel="noreferrer">Open selected</a>`
+              : ''
+          }
+          <a href="/building/${buildingId}" target="_blank" rel="noreferrer">Open only this</a>
+        </div>
 
-      // Replace selection when not additive
-      if (!additive) {
-        // If clicking the same already-selected marker, keep it selected (still "replace")
-        // but we can treat it as single-select "focus".
-        if (!(selectedIds.size === 1 && selectedIds.has(id))) {
-          clearSelection();
-        }
-      }
-
-      if (selectedIds.has(id)) {
-        // If additive: allow toggling off
-        // If not additive: we already cleared others, so toggling off would mean empty selection;
-        // choose behavior: keep it selected when not additive.
-        if (additive) {
-          selectedIds.delete(id);
-          selectedMarkersRef.current.delete(id);
-          updateMarkerSelectionStyle(marker, false);
-        } else {
-          // keep selected
-          selectedIds.add(id);
-          selectedMarkersRef.current.set(id, marker);
-          updateMarkerSelectionStyle(marker, true);
-        }
-      } else {
-        selectedIds.add(id);
-        selectedMarkersRef.current.set(id, marker);
-        updateMarkerSelectionStyle(marker, true);
-      }
-    },
-    [clearSelection, updateMarkerSelectionStyle]
-  );
-
-  const openSelectedBuildings = useCallback(() => {
-    const ids = Array.from(selectedIdsRef.current);
-    if (ids.length === 0) return;
-    const csv = ids.join(',');
-    window.open(`/building/${csv}`, '_blank', 'noreferrer');
+        <div style="margin-top: 8px; color: #666; font-size: 12px;">
+          Tip: Click replaces selection • Ctrl/Cmd+Click multi-select
+        </div>
+      </div>
+    `;
   }, []);
 
   const renderFeatures = useCallback(
@@ -251,108 +316,86 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       if (!layer) return;
 
       clearMarkers();
-
-      // Reset selection whenever we re-render a new result set
       clearSelection();
 
-      data.features.forEach((feature) => {
-        const { coordinates } = feature.geometry as any;
-        const [x, y] = coordinates; // lon, lat
-        const buildingSolidId = (feature.properties as any)['building_solid_id'];
+      const safeFeatures = dedupeFeaturesById(data.features as any);
 
-        const latLng = new L.LatLng(y, x);
+      for (const feature of safeFeatures) {
+        const id = getBuildingSolidId(feature as any);
+        const lonLat = getFeatureLonLat(feature as any);
+        if (id == null || lonLat == null) continue;
 
-        const marker = L.circleMarker(latLng, FOUND_MARKER_STYLE);
+        const [lng, lat] = lonLat;
+        const marker = L.circleMarker([lat, lng], FOUND_MARKER_STYLE);
 
-        // Attach id for potential later use
-        (marker as any).__buildingSolidId = buildingSolidId;
+        // Bind popup once
+        marker.bindPopup('');
 
         marker.on('click', (e: L.LeafletMouseEvent) => {
           const oe = e.originalEvent as MouseEvent | undefined;
-          const additive = !!oe && (oe.ctrlKey || oe.metaKey); // Ctrl on Win/Linux, Cmd on Mac
+          const additive = !!oe && (oe.ctrlKey || oe.metaKey);
 
-          toggleSelection(buildingSolidId, marker, additive);
+          // Requested behavior: without Ctrl/Cmd => replace selection
+          if (additive) {
+            toggleAdditive(id, marker);
+          } else {
+            selectOnly(id, marker);
+          }
 
-          const selected = Array.from(selectedIdsRef.current);
-          const csv = selected.join(',');
-
-          const popupHtml = `
-            <div style="font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto;">
-              <div><strong>Building:</strong> ${buildingSolidId}</div>
-              <div style="margin-top: 6px;"><strong>Selected:</strong> ${selected.length}</div>
-
-              <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                ${
-                  selected.length > 0
-                    ? `<a href="/building/${csv}" target="_blank" rel="noreferrer">Open selected</a>`
-                    : ''
-                }
-                <a href="/building/${buildingSolidId}" target="_blank" rel="noreferrer">Open only this</a>
-              </div>
-
-              <div style="margin-top: 8px; color: #666; font-size: 12px;">
-                Tip: Click replaces selection • Ctrl/Cmd+Click multi-select
-              </div>
-            </div>
-          `;
-
-          marker.bindPopup(popupHtml).openPopup();
+          marker.setPopupContent(buildPopupHtml(id));
+          marker.openPopup();
         });
 
         marker.addTo(layer);
-      });
+      }
     },
-    [clearMarkers, clearSelection, toggleSelection]
+    [buildPopupHtml, clearMarkers, clearSelection, selectOnly, toggleAdditive]
   );
+
+  // ---------- Rectangle selection ----------------------
 
   const clearSelectionRectangle = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (selectionRectRef.current) {
-      selectionRectRef.current.removeFrom(map);
-      selectionRectRef.current = null;
-    }
+    selectionRectRef.current?.removeFrom(map);
+    selectionRectRef.current = null;
     selectionStartRef.current = null;
     selectingRef.current = false;
 
-    // Ensure dragging is re-enabled if selection ends unexpectedly
-    if (!map.dragging.enabled()) {
-      map.dragging.enable();
-    }
+    if (!map.dragging.enabled()) map.dragging.enable();
   }, []);
 
-  // ---- Effects -----------------------------------------------------------
+  // ---------- Effects: map initialization ---------------
 
   useEffect(() => {
-    // Disable built-in Leaflet boxZoom (shift+drag zoom) so we can use shift+drag selection
     const map = L.map('map', { boxZoom: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     mapRef.current = map;
 
-    // Base layer
     L.tileLayer(TILE_URL, {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
 
-    // Dedicated layer group for markers
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
 
-    // Add a small Leaflet control to open selected buildings
+    // --- Open control
     const OpenSelectedControl = (L.Control as any).extend({
       onAdd: () => {
         const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-        const btn = L.DomUtil.create('a', '', container);
+        const a = L.DomUtil.create('a', '', container) as HTMLAnchorElement;
 
-        btn.href = '#';
-        btn.title = 'Open selected buildings';
-        btn.innerHTML = 'Open';
+        a.href = '#';
+        a.title = 'Open selected buildings';
+        a.innerHTML = 'Open (0)';
+        a.style.opacity = '0.5';
+        a.style.pointerEvents = 'none';
 
-        // Prevent clicks from affecting the map
+        openControlAnchorRef.current = a;
+
         L.DomEvent.disableClickPropagation(container);
-
-        L.DomEvent.on(btn, 'click', (ev: Event) => {
+        L.DomEvent.on(a, 'click', (ev: Event) => {
           L.DomEvent.preventDefault(ev);
           openSelectedBuildings();
         });
@@ -361,17 +404,40 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       },
     });
 
-    openSelectedControlRef.current = new OpenSelectedControl({ position: 'topright' });
-    openSelectedControlRef.current.addTo(map);
+    openControlRef.current = new OpenSelectedControl({ position: 'topright' });
+    openControlRef.current.addTo(map);
 
-    // Right-click handler (existing behavior)
+    // --- Clear control
+    const ClearControl = (L.Control as any).extend({
+      onAdd: () => {
+        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const a = L.DomUtil.create('a', '', container) as HTMLAnchorElement;
+
+        a.href = '#';
+        a.title = 'Clear selection';
+        a.innerHTML = 'Clear';
+
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.on(a, 'click', (ev: Event) => {
+          L.DomEvent.preventDefault(ev);
+          clearSelection();
+        });
+
+        return container;
+      },
+    });
+
+    clearControlRef.current = new ClearControl({ position: 'topright' });
+    clearControlRef.current.addTo(map);
+
+    // Right-click fetch
     const onContextMenu = async (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
 
       setSearchIndicator(e.latlng);
-
       cancelOngoingRequest();
       clearMarkers();
+      clearSelection();
 
       const results = await progressiveFetch(lng, lat);
 
@@ -392,18 +458,14 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       renderFeatures(results);
     };
 
-    // SHIFT + left drag selection handlers
+    // SHIFT + drag bbox selection
     const onMouseDown = (e: L.LeafletMouseEvent) => {
       const oe = e.originalEvent as MouseEvent | undefined;
-      if (!oe) return;
-
-      // Start selection only with SHIFT + left button
-      if (!oe.shiftKey || oe.button !== 0) return;
+      if (!oe || !oe.shiftKey || oe.button !== 0) return;
 
       selectingRef.current = true;
       selectionStartRef.current = e.latlng;
 
-      // Disable map dragging while selecting
       map.dragging.disable();
 
       const initialBounds = L.latLngBounds(e.latlng, e.latlng);
@@ -414,39 +476,37 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
 
     const onMouseMove = (e: L.LeafletMouseEvent) => {
       if (!selectingRef.current || !selectionStartRef.current || !selectionRectRef.current) return;
-
-      const bounds = L.latLngBounds(selectionStartRef.current, e.latlng);
-      selectionRectRef.current.setBounds(bounds);
+      selectionRectRef.current.setBounds(L.latLngBounds(selectionStartRef.current, e.latlng));
     };
 
     const finishSelection = async (endLatLng?: L.LatLng) => {
       if (!selectingRef.current || !selectionStartRef.current) return;
 
-      // Re-enable map dragging
       if (!map.dragging.enabled()) map.dragging.enable();
 
       const end = endLatLng ?? selectionStartRef.current;
       const bounds = L.latLngBounds(selectionStartRef.current, end);
 
-      // Optional: ignore very small drags
       const pixelSize = map
         .latLngToContainerPoint(bounds.getNorthEast())
         .distanceTo(map.latLngToContainerPoint(bounds.getSouthWest()));
+
       if (pixelSize < 6) {
         clearSelectionRectangle();
         return;
       }
 
-      // UI indicator at center of rectangle
       setSearchIndicator(bounds.getCenter());
 
-      // Clear current markers and fetch all features inside bbox
+      cancelOngoingRequest();
       clearMarkers();
+      clearSelection();
+
       const results = await fetchByBbox(bounds);
 
       setSearchIndicator(null);
 
-      if (!results || !Array.isArray(results.features) || results.features.length === 0) {
+      if (!results || !results.features?.length) {
         L.popup()
           .setLatLng(bounds.getCenter())
           .setContent(
@@ -455,6 +515,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
             </div>`
           )
           .openOn(map);
+
         clearSelectionRectangle();
         return;
       }
@@ -468,23 +529,19 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       finishSelection(e.latlng);
     };
 
-    // If mouseup happens outside the map container
     const onDocMouseUp = () => {
       if (!selectingRef.current) return;
       finishSelection();
     };
 
     map.on('contextmenu', onContextMenu);
-
     map.on('mousedown', onMouseDown);
     map.on('mousemove', onMouseMove);
     map.on('mouseup', onMouseUp);
     document.addEventListener('mouseup', onDocMouseUp);
 
-    // Cleanup on unmount
     return () => {
       map.off('contextmenu', onContextMenu);
-
       map.off('mousedown', onMouseDown);
       map.off('mousemove', onMouseMove);
       map.off('mouseup', onMouseUp);
@@ -493,21 +550,19 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       clearSelectionRectangle();
       cancelOngoingRequest();
 
-      if (openSelectedControlRef.current) {
-        openSelectedControlRef.current.remove();
-        openSelectedControlRef.current = null;
-      }
+      openControlRef.current?.remove();
+      openControlRef.current = null;
+      clearControlRef.current?.remove();
+      clearControlRef.current = null;
 
-      if (markersLayerRef.current) {
-        markersLayerRef.current.remove();
-        markersLayerRef.current = null;
-      }
-      if (searchIndicatorRef.current) {
-        searchIndicatorRef.current.remove();
-        searchIndicatorRef.current = null;
-      }
+      openControlAnchorRef.current = null;
 
-      // clear selection refs
+      markersLayerRef.current?.remove();
+      markersLayerRef.current = null;
+
+      searchIndicatorRef.current?.remove();
+      searchIndicatorRef.current = null;
+
       selectedMarkersRef.current.clear();
       selectedIdsRef.current.clear();
 
@@ -517,6 +572,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
   }, [
     cancelOngoingRequest,
     clearMarkers,
+    clearSelection,
     clearSelectionRectangle,
     fetchByBbox,
     progressiveFetch,
@@ -525,48 +581,42 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     openSelectedBuildings,
   ]);
 
-  // Focus and fetch progressively for selected addresses (existing behavior)
+  // ---------- Effect: focus and fetch for selected addresses ---------------
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedAddresses || selectedAddresses.length === 0) return;
+    if (!map || !selectedAddresses?.length) return;
 
-    // Keep only addresses with a valid GeoJSON Point geometry
     const pointAddrs = selectedAddresses.filter((addr) => addr.l72);
     if (pointAddrs.length === 0) return;
 
-    // Focus map: fit bounds if multiple, flyTo if single
     const latLngs = pointAddrs.map((addr) => {
       const [lng, lat] = addr.l72.coordinates;
       return L.latLng(lat, lng);
     });
 
     if (latLngs.length > 1) {
-      const bounds = L.latLngBounds(latLngs);
-      map.fitBounds(bounds, { padding: [24, 24] });
+      map.fitBounds(L.latLngBounds(latLngs), { padding: [24, 24] });
     } else {
       map.flyTo(latLngs[0], Math.max(map.getZoom(), FOCUS_ZOOM), { animate: true });
     }
 
     cancelOngoingRequest();
     clearMarkers();
+    clearSelection();
 
     (async () => {
-      const merged: BuildingSolidType = {
-        type: 'FeatureCollection',
-        features: [],
-      } as BuildingSolidType;
+      const all: MaybeFeature[] = [];
 
       for (const addr of pointAddrs) {
         const [lng, lat] = addr.l72.coordinates;
 
         setSearchIndicator({ lat, lng });
-
         const res = await progressiveFetch(lng, lat);
-
         setSearchIndicator(null);
 
-        if (res && Array.isArray(res.features) && res.features.length > 0) {
-          merged.features.push(...res.features);
+        if (res?.features?.length) {
+          all.push(...(res.features as any));
         } else {
           L.popup()
             .setLatLng([lat, lng])
@@ -579,6 +629,11 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
         }
       }
 
+      const merged: BuildingSolidType = {
+        type: 'FeatureCollection',
+        features: dedupeFeaturesById(all) as any,
+      } as BuildingSolidType;
+
       if (merged.features.length > 0) {
         renderFeatures(merged);
       }
@@ -587,6 +642,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     selectedAddresses,
     cancelOngoingRequest,
     clearMarkers,
+    clearSelection,
     progressiveFetch,
     renderFeatures,
     setSearchIndicator,

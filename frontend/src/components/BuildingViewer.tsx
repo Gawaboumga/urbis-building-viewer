@@ -733,6 +733,17 @@ export class BuildingViewer {
 
           // 🔴 Ensure triangles face outward relative to solid center
           const outward = centroid.clone().sub(solidCenter).normalize();
+
+          if (normal.dot(outward) < 0) {
+            normal.multiplyScalar(-1);
+
+            // IMPORTANT: keep the basis right-handed
+            // Flip ONE axis (x or y), not both.
+            xAxis.multiplyScalar(-1);
+            // yAxis can be recomputed to guarantee orthogonality:
+            yAxis.crossVectors(normal, xAxis).normalize();
+          }
+
           const geometry = this.ensureTrianglesFaceOutward(geometry3D, outward);
 
           // (Re)build vertex colors using final triangle winding

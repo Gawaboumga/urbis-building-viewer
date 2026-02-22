@@ -405,7 +405,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     });
 
     openControlRef.current = new OpenSelectedControl({ position: 'topright' });
-    openControlRef.current.addTo(map);
+    openControlRef.current?.addTo(map);
 
     // --- Clear control
     const ClearControl = (L.Control as any).extend({
@@ -428,7 +428,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     });
 
     clearControlRef.current = new ClearControl({ position: 'topright' });
-    clearControlRef.current.addTo(map);
+    clearControlRef.current?.addTo(map);
 
     // Right-click fetch
     const onContextMenu = async (e: L.LeafletMouseEvent) => {

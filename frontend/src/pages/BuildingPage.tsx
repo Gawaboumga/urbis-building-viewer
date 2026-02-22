@@ -15,7 +15,8 @@ function parseIdsParam(param?: string): number[] {
     .map(s => s.trim())
     .filter(Boolean)
     .map(n => Number(n))
-    .filter(n => Number.isFinite(n) && n > 0);
+    .filter(n => Number.isFinite(n) && n > 0)
+    .slice(0, 20);
 }
 
 const BuildingPage: React.FC = () => {

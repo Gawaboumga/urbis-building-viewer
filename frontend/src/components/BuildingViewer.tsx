@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
+export type GeometryExportFormat = 'glb' | 'gltf' | 'obj' | 'stl';
+
 /* ---------------------------------------------
  * Geometry helpers
  * --------------------------------------------- */
@@ -761,6 +763,83 @@ export class BuildingViewer {
     this.measureHelper?.destroy();
     this.container.removeChild(this.renderer.domElement);
   };
+
+  private downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+
+  private timestamp() {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+  }
+
+  public async downloadAllGeometries(format: GeometryExportFormat) {
+    const ts = this.timestamp();
+
+    // Export the whole loaded building set
+    // We clone so we don't export references tied to WebGL resources
+    const exportRoot = this.buildingsRoot.clone(true);
+
+    // Optional: ensure world matrices are up to date
+    exportRoot.updateMatrixWorld(true);
+
+    if (format === 'glb' || format === 'gltf') {
+      const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+      const exporter = new GLTFExporter();
+
+      const binary = (format === 'glb');
+
+      exporter.parse(
+        exportRoot,
+        (result) => {
+          if (binary) {
+            const blob = new Blob([result as ArrayBuffer], { type: 'model/gltf-binary' });
+            this.downloadBlob(blob, `building_${ts}.glb`);
+          } else {
+            // result is a JSON object
+            const json = JSON.stringify(result, null, 2);
+            const blob = new Blob([json], { type: 'model/gltf+json' });
+            this.downloadBlob(blob, `building_${ts}.gltf`);
+          }
+        },
+        (err) => console.error('GLTF/GLB export error:', err),
+        {
+          binary,
+          // keep it simple; you can add:
+          // includeCustomExtensions: true
+        }
+      );
+
+      return;
+    }
+
+    if (format === 'obj') {
+      const { OBJExporter } = await import('three/examples/jsm/exporters/OBJExporter.js');
+      const exporter = new OBJExporter();
+
+      const objText = exporter.parse(exportRoot);
+      const blob = new Blob([objText], { type: 'text/plain;charset=utf-8' });
+      this.downloadBlob(blob, `building_${ts}.obj`);
+      return;
+    }
+
+    if (format === 'stl') {
+      const { STLExporter } = await import('three/examples/jsm/exporters/STLExporter.js');
+      const exporter = new STLExporter();
+
+      // STLExporter returns string by default
+      const stl = exporter.parse(exportRoot) as string;
+      const blob = new Blob([stl], { type: 'model/stl' });
+      this.downloadBlob(blob, `building_${ts}.stl`);
+      return;
+    }
+  }
 
   private onResize = () => {
     const w = this.container.clientWidth;

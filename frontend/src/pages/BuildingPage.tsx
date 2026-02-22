@@ -34,6 +34,12 @@ const BuildingPage: React.FC = () => {
   // Ref to call imperative methods on the viewer
   const viewerHandleRef = useRef<BuildingViewerHandle | null>(null);
 
+  const [geomFormat, setGeomFormat] = useState<'glb' | 'gltf' | 'obj' | 'stl'>('glb');
+
+  const handleDownloadGeometries = () => {
+    viewerHandleRef.current?.downloadAllGeometries(geomFormat);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -134,6 +140,31 @@ const BuildingPage: React.FC = () => {
         </div>
 
         <div id="faces" className="faces-section p-3" style={{ minWidth: '250px' }}>
+
+          <div className="d-flex gap-2 align-items-center mb-2">
+            <select
+              className="form-select form-select-sm"
+              style={{ maxWidth: 140 }}
+              value={geomFormat}
+              onChange={(e) => setGeomFormat(e.target.value as any)}
+            >
+              <option value="glb">GLB</option>
+              <option value="gltf">GLTF</option>
+              <option value="obj">OBJ</option>
+              <option value="stl">STL</option>
+            </select>
+
+            <span
+              className="btn btn-sm btn-primary"
+              onClick={hasSolids ? handleDownloadGeometries : undefined}
+              disabled={!hasSolids}
+              title="Download all loaded geometries"
+            >
+              ⬇ Download geometry
+            </span>
+          </div>
+
+
           <div className="d-flex justify-content-between align-items-center mb-2">
             <h5 className="m-0">List of faces</h5>
           </div>

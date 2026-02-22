@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { BuildingViewer } from './BuildingViewer';
+import type { GeometryExportFormat } from './BuildingViewer';
+
 
 interface BuildingViewerProps {
   buildingSolids?: any[];     // preferred
@@ -8,6 +10,7 @@ interface BuildingViewerProps {
 
 export interface BuildingViewerHandle {
   clearSelectedFaces: () => void;
+  downloadAllGeometries: (format: GeometryExportFormat) => void;
 }
 
 function asArray<T>(x: T | T[] | undefined | null): T[] {
@@ -29,6 +32,9 @@ const BuildingViewerComponent = forwardRef<BuildingViewerHandle, BuildingViewerP
       clearSelectedFaces: () => {
         viewerRef.current?.clearSelectedFaces();
       },
+      downloadAllGeometries: (format) => {
+        viewerRef.current?.downloadAllGeometries(format);
+      }
     }));
 
     useEffect(() => {

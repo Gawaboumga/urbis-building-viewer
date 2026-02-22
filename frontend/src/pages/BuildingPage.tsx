@@ -5,33 +5,45 @@ import BuildingViewerComponent, { type BuildingViewerHandle } from '../component
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
+const MAX_SOLIDS = 10;
+
 function parseIdsParam(param?: string): number[] {
   if (!param) return [];
 
-  // Accept comma-separated: "12,15,18"
-  // Also tolerate accidental spaces: "12, 15, 18"
   return param
     .split(',')
     .map(s => s.trim())
     .filter(Boolean)
     .map(n => Number(n))
-    .filter(n => Number.isFinite(n) && n > 0)
-    .slice(0, 20);
+    .filter(n => Number.isFinite(n) && n > 0);
 }
 
 const BuildingPage: React.FC = () => {
-  // NEW: buildingSolidIds instead of buildingSolidId
   const { buildingSolidIds } = useParams();
 
-  // Parse once per param change
-  const ids = useMemo(() => parseIdsParam(buildingSolidIds), [buildingSolidIds]);
+  // Parse once per param change (raw list)
+  const rawIds = useMemo(() => parseIdsParam(buildingSolidIds), [buildingSolidIds]);
 
-  // Store multiple solids
+  // Optional: de-duplicate while preserving order
+  const uniqueIds = useMemo(() => {
+    const seen = new Set<number>();
+    return rawIds.filter(id => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [rawIds]);
+
+  // ✅ Enforce the max limit here
+  const ids = useMemo(() => uniqueIds.slice(0, MAX_SOLIDS), [uniqueIds]);
+
+  // ✅ Flag to show a warning if URL contains too many ids
+  const exceededLimit = uniqueIds.length > MAX_SOLIDS;
+
   const [buildingSolids, setBuildingSolids] = useState<any[] | null>(null);
   const [status, setStatus] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  // Ref to call imperative methods on the viewer
   const viewerHandleRef = useRef<BuildingViewerHandle | null>(null);
 
   const [geomFormat, setGeomFormat] = useState<'glb' | 'gltf' | 'obj' | 'stl'>('glb');
@@ -55,16 +67,14 @@ const BuildingPage: React.FC = () => {
       setStatus('loading');
 
       try {
-        // Fetch all solids in parallel
+        // Fetch all solids in parallel (but only up to MAX_SOLIDS)
         const results = await Promise.all(
           ids.map(id => getBuildingSolid(id, { computeArea: true }))
         );
 
         if (cancelled) return;
 
-        // If your API might return null/undefined for missing ids, filter them:
         const valid = results.filter(Boolean);
-
         setBuildingSolids(valid);
         setStatus('loaded');
       } catch (e: any) {
@@ -94,12 +104,19 @@ const BuildingPage: React.FC = () => {
         <h4>Building Information</h4>
         <p>
           Select a face on the building to see the surface.
-          {ids.length > 1 && (
+          {ids.length > 0 && (
             <span style={{ marginLeft: 8, opacity: 0.8 }}>
-              (Loaded {ids.length} solids)
+              (Loaded {ids.length} solid{ids.length > 1 ? 's' : ''})
             </span>
           )}
         </p>
+
+        {/* ✅ Optional warning */}
+        {exceededLimit && (
+          <div style={{ color: '#b45309', marginTop: 6 }}>
+            ⚠️ More than {MAX_SOLIDS} IDs were provided. Only the first {MAX_SOLIDS} are loaded.
+          </div>
+        )}
       </div>
 
       <div className="main-section d-flex flex-row full-height">
@@ -121,7 +138,6 @@ const BuildingPage: React.FC = () => {
           {hasSolids && (
             <BuildingViewerComponent
               ref={viewerHandleRef}
-              // NEW PROP: buildingSolids (array)
               buildingSolids={buildingSolids}
             />
           )}
@@ -140,7 +156,6 @@ const BuildingPage: React.FC = () => {
         </div>
 
         <div id="faces" className="faces-section p-3" style={{ minWidth: '250px' }}>
-
           <div className="d-flex gap-2 align-items-center mb-2">
             <select
               className="form-select form-select-sm"
@@ -157,13 +172,16 @@ const BuildingPage: React.FC = () => {
             <span
               className="btn btn-sm btn-primary"
               onClick={hasSolids ? handleDownloadGeometries : undefined}
-              disabled={!hasSolids}
+              // NOTE: "disabled" isn't valid on <span>, but leaving your current structure.
               title="Download all loaded geometries"
+              style={{
+                cursor: hasSolids ? 'pointer' : 'not-allowed',
+                opacity: hasSolids ? 1 : 0.4
+              }}
             >
               ⬇ Download geometry
             </span>
           </div>
-
 
           <div className="d-flex justify-content-between align-items-center mb-2">
             <h5 className="m-0">List of faces</h5>
@@ -190,8 +208,8 @@ const BuildingPage: React.FC = () => {
       </div>
 
       <div className="info-banner p-3 border-bottom">
-        <h4>You can rotate with left click, move with right click and zoom with mouse wheel</h4>
-        <h4>if you SHIFT + left click, you can draw a custom area or get distance between points</h4>
+        <h4>You can rotate with left click, move with right click and zoom with mouse wheel.</h4>
+        <h4>If you SHIFT + left click, you can draw a custom area or get distance between points.</h4>
       </div>
     </div>
   );

@@ -275,6 +275,7 @@ class MeasureDrawHelper {
     const mat = new THREE.MeshBasicMaterial({ color: this.lineColor });
     const m = new THREE.Mesh(geom, mat);
     m.position.copy(p);
+    m.raycast = () => {};
     this.pointMeshes.push(m);
     this.overlay.add(m);
   }

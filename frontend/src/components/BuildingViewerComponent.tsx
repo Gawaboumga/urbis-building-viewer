@@ -1,18 +1,29 @@
-import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { BuildingViewer } from './BuildingViewer';
 
 interface BuildingViewerProps {
-  buildingSolid: any;
+  buildingSolids?: any[];     // preferred
+  buildingSolid?: any;        // legacy single-solid prop
 }
 
 export interface BuildingViewerHandle {
   clearSelectedFaces: () => void;
 }
 
+function asArray<T>(x: T | T[] | undefined | null): T[] {
+  if (!x) return [];
+  return Array.isArray(x) ? x : [x];
+}
+
 const BuildingViewerComponent = forwardRef<BuildingViewerHandle, BuildingViewerProps>(
-  ({ buildingSolid }, ref) => {
+  ({ buildingSolids, buildingSolid }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewerRef = useRef<BuildingViewer | null>(null);
+
+    // Normalize to an array
+    const solids = useMemo(() => {
+      return buildingSolids?.length ? buildingSolids : asArray(buildingSolid);
+    }, [buildingSolids, buildingSolid]);
 
     useImperativeHandle(ref, () => ({
       clearSelectedFaces: () => {
@@ -21,22 +32,18 @@ const BuildingViewerComponent = forwardRef<BuildingViewerHandle, BuildingViewerP
     }));
 
     useEffect(() => {
-      if (!viewerRef.current && containerRef.current && buildingSolid) {
-        viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
+      viewerRef.current?.destroy();
+      viewerRef.current = null;
+
+      if (containerRef.current && solids.length > 0) {
+        viewerRef.current = new BuildingViewer(containerRef.current, solids);
       }
+
       return () => {
         viewerRef.current?.destroy();
         viewerRef.current = null;
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
-      if (!viewerRef.current && containerRef.current && buildingSolid) {
-        viewerRef.current = new BuildingViewer(containerRef.current, buildingSolid);
-      }
-      // if you later re-enable updateBuilding, you can call it here
-    }, [buildingSolid]);
+    }, [solids]);
 
     return (
       <div

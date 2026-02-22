@@ -10,7 +10,7 @@ const App: React.FC = () => {
       <Router>
         <Routes>
           <Route path="/" element={<MapPage />} />
-          <Route path="/building/:buildingSolidId" element={<BuildingPage />} />
+          <Route path="/building/:buildingSolidIds" element={<BuildingPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>

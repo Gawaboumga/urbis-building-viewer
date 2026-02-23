@@ -205,6 +205,12 @@ class MeasureDrawHelper {
   private scene: THREE.Scene;
 
   private activeMesh: THREE.Mesh | null = null;
+
+  private referenceNormal: THREE.Vector3 | null = null;
+  private referencePlane: THREE.Plane | null = null;
+  private readonly normalToleranceDeg = 2.5; // normals within 2.5°
+  private readonly planeEpsilon = 0.3;       // meters, max distance from plane
+
   private points: THREE.Vector3[] = [];
   private closed = false;
 
@@ -233,6 +239,8 @@ class MeasureDrawHelper {
   public clear() {
     this.closed = false;
     this.activeMesh = null;
+    this.referenceNormal = null;
+    this.referencePlane = null;
     this.points = [];
 
     if (this.line) {
@@ -282,7 +290,6 @@ class MeasureDrawHelper {
 
     this.raycaster.setFromCamera(ndc, camera);
 
-    // Intersect everything; labels/markers have raycast disabled.
     const [hit] = this.raycaster.intersectObjects(scene.children, true);
     if (!hit || !(hit.object instanceof THREE.Mesh)) return;
 
@@ -291,6 +298,37 @@ class MeasureDrawHelper {
 
     const p = hit.point.clone();
 
+    // compute hit normal in world space
+    const nWorld = this.getHitNormalWorld(hit);
+
+    if (this.points.length === 0) {
+      this.referenceNormal = nWorld.clone().normalize();
+
+      this.referencePlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        this.referenceNormal,
+        p
+      );
+
+    } else {
+      const refN = this.referenceNormal ?? new THREE.Vector3(0, 1, 0);
+
+      const dot = Math.abs(refN.dot(nWorld));
+      const cosTol = Math.cos(THREE.MathUtils.degToRad(this.normalToleranceDeg));
+
+      if (dot < cosTol) {
+        this.clear();
+        return;
+      }
+
+      // Ensure the point is close to the reference plane (prevents measuring across parallel floors)
+      if (this.referencePlane) {
+        const d = Math.abs(this.referencePlane.distanceToPoint(p));
+        if (d > this.planeEpsilon) {
+          return;
+        }
+      }
+    }
+
     if (this.points.length >= 3) {
       const first = this.points[0];
       if (p.distanceTo(first) <= this.closeThreshold) {
@@ -298,11 +336,6 @@ class MeasureDrawHelper {
         this.updateVisuals();
         return;
       }
-    }
-
-    if (this.activeMesh !== mesh) {
-      this.clear();
-      this.activeMesh = mesh;
     }
 
     this.points.push(p);
@@ -341,6 +374,23 @@ class MeasureDrawHelper {
       this.line.geometry.dispose();
       this.line.geometry = geom;
     }
+  }
+
+  private getHitNormalWorld(hit: THREE.Intersection): THREE.Vector3 {
+    const n = new THREE.Vector3(0, 1, 0);
+
+    // Prefer face normal if available (most accurate)
+    if (hit.face?.normal && hit.object instanceof THREE.Mesh) {
+      n.copy(hit.face.normal);
+
+      // transform normal from local -> world
+      const mesh = hit.object as THREE.Mesh;
+      const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+      n.applyMatrix3(normalMatrix).normalize();
+      return n;
+    }
+
+    return this.getSurfaceNormalWorld(hit.object as THREE.Mesh);
   }
 
   private updateAreaLabel() {

@@ -44,7 +44,7 @@ docker compose -f compose.prod.yml --env-file=.prod.env restart nginx
 ```
 cd data
 
-release_date=20260207        
+release_date=20260207
 curl -O https://urbisdownload.datastore.brussels/UrbIS/Vector/M8/UrbIS-Buildings3D/GPKG/UrbISBuildings3D_31370_GPKG_04000_$release_date.zip
 unzip UrbISBuildings3D_31370_GPKG_04000_$release_date.zip
 mv gpkg/UrbISBuildings3D_04000.gpkg UrbISBuildings3D_04000.gpkg

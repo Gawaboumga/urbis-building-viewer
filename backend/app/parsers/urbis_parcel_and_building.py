@@ -49,8 +49,6 @@ class GPKGBuilding(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, nullable=False)
     geom: Mapped[str | None] = mapped_column(Geometry("MULTIPOLYGON", srid=LAMBERT_72_SRID))
     inspire_id: Mapped[str | None] = mapped_column(String(88), name="INSPIRE_ID")
-    capa_id: Mapped[str | None] = mapped_column(String(88), name="CAPA_ID")
-    capakey: Mapped[str | None] = mapped_column(String(18), name="CAPAKEY")
     block_id: Mapped[str | None] = mapped_column(String(88), name="BLOCK_ID")
     area: Mapped[float | None] = mapped_column(REAL, name="AREA")
 

@@ -53,7 +53,7 @@ async def load_parcel_and_building(db: AsyncSession = Depends(get_db)):
                 index_type=IndexType.BTREE
             ),
             IndexDescription(
-                columns=[AddressTMP.l72],
+                columns=[AddressTMP.l08],
                 index_type=IndexType.GIST
             ),
         ],

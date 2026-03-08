@@ -15,5 +15,5 @@ class Address(BaseModel):
     police_number: str
     box_number: str | None
     stat_nis_code: str
-    l72: Point
+    l08: Point
     geometry: MultiPoint

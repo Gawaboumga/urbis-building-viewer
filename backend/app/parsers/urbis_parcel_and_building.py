@@ -1,4 +1,4 @@
-from app.core.constants import LAMBERT_72_SRID
+from app.core.constants import LAMBERT_72_SRID, LAMBERT_08_SRID
 from app.core.models import Address, Building, CadastralParcel, Municipality, Street
 from app.core.settings import Settings
 from app.enums.cadastral_parcel_type import CadastralParcelType
@@ -119,7 +119,7 @@ def read_addresses(capa_key_to_capa_inspire_id: dict[str, int], municipalities: 
                 police_number=gpkg_address.policenum,
                 box_number=gpkg_address.box_number,
                 stat_nis_code=gpkg_address.statnis_code,
-                l72=from_shape(Point(gpkg_address.xl72, gpkg_address.yl72), srid=LAMBERT_72_SRID),
+                l08=from_shape(Point(gpkg_address.xl72, gpkg_address.yl72), srid=LAMBERT_08_SRID),
                 geometry=gpkg_address.geom,
             )
 

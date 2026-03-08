@@ -1,4 +1,4 @@
-from app.core.constants import LAMBERT_72_SRID
+from app.core.constants import LAMBERT_72_SRID, LAMBERT_08_SRID
 from app.core.deps import get_db
 from app.core.models import Address
 from app.schemas import requests, responses
@@ -19,9 +19,9 @@ async def get_addresses(address_list: requests.AddressList, db: AsyncSession = D
     result = await db.execute(stmt)
     results = []
     for row in result.scalars():
-        l72 = to_shape(row.l72)
+        l08 = to_shape(row.l08)
         if address_list.destination_srid is not None:
-            l72 = transform_geometry(l72, LAMBERT_72_SRID, address_list.destination_srid)
+            l08 = transform_geometry(l08, LAMBERT_08_SRID, address_list.destination_srid)
         geometry = to_shape(row.geometry)
         if address_list.destination_srid is not None:
             geometry = transform_geometry(geometry, LAMBERT_72_SRID, address_list.destination_srid)
@@ -38,7 +38,7 @@ async def get_addresses(address_list: requests.AddressList, db: AsyncSession = D
             police_number=row.police_number,
             box_number=row.box_number,
             stat_nis_code=row.stat_nis_code,
-            l72=mapping(l72),
+            l08=mapping(l08),
             geometry=mapping(geometry),
         ))
     return results

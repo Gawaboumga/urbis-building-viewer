@@ -587,11 +587,11 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
     const map = mapRef.current;
     if (!map || !selectedAddresses?.length) return;
 
-    const pointAddrs = selectedAddresses.filter((addr) => addr.l72);
+    const pointAddrs = selectedAddresses.filter((addr) => addr.l08);
     if (pointAddrs.length === 0) return;
 
     const latLngs = pointAddrs.map((addr) => {
-      const [lng, lat] = addr.l72.coordinates;
+      const [lng, lat] = addr.l08.coordinates;
       return L.latLng(lat, lng);
     });
 
@@ -609,7 +609,7 @@ const MapSelector: React.FC<Props> = ({ selectedAddresses = [] }) => {
       const all: MaybeFeature[] = [];
 
       for (const addr of pointAddrs) {
-        const [lng, lat] = addr.l72.coordinates;
+        const [lng, lat] = addr.l08.coordinates;
 
         setSearchIndicator({ lat, lng });
         const res = await progressiveFetch(lng, lat);

@@ -1,4 +1,4 @@
-from app.core.constants import SCHEMA_URBIS_PARCEL_AND_BUILDING, SCHEMA_URBIS_3D_CONSTRUCTION, LAMBERT_72_SRID
+from app.core.constants import SCHEMA_URBIS_PARCEL_AND_BUILDING, SCHEMA_URBIS_3D_CONSTRUCTION, LAMBERT_72_SRID, LAMBERT_08_SRID
 from app.enums.building_face_type import BuildingFaceType
 from app.enums.cadastral_parcel_type import CadastralParcelType
 from datetime import date
@@ -58,8 +58,8 @@ class _AddressMixin:
     police_number: Mapped[str] = mapped_column()
     box_number: Mapped[str | None] = mapped_column()
     stat_nis_code: Mapped[str] = mapped_column()
-    l72: Mapped[Geometry] = mapped_column(
-        Geometry(geometry_type='POINT', srid=LAMBERT_72_SRID, spatial_index=False),
+    l08: Mapped[Geometry] = mapped_column(
+        Geometry(geometry_type='POINT', srid=LAMBERT_08_SRID, spatial_index=False),
     )
     geometry: Mapped[Geometry] = mapped_column(
         Geometry(geometry_type='MULTIPOINT', srid=LAMBERT_72_SRID, spatial_index=False),

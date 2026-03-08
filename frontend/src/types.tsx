@@ -14,7 +14,7 @@ export interface Address {
   police_number: string;
   box_number: string | null;
   stat_nis_code: string;
-  l72: Point;
+  l08: Point;
   geometry: MultiPoint;
 }
 
@@ -30,7 +30,7 @@ export interface AddressResponse {
   addresses: {
     addressId: number;
     buildingId: number;
-    l72: {
+    l08: {
       coordinates: [number, number];
     };
   }[];

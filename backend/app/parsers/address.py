@@ -78,19 +78,34 @@ _ADDR_RE = re.compile(r"""
     \s*$
 """, re.IGNORECASE | re.VERBOSE)
 
+_ADDR_RE_NUMBER_FIRST = re.compile(r"""
+    (?P<number>\d+[A-Za-z]?)             # house number first
+    (?:\s*(?P<box>(?:box|bo[iî]te|bus|bte)\s*[A-Z0-9\-]+))?
+    [,\s]+
+    (?P<street>.+?)                      # street part
+    [,\s]*
+    (?:(?P<postal_code>\d{4})\s*)?               # optional ZIP
+    \s*$
+""", re.IGNORECASE | re.VERBOSE)
+
 def parse_address(text: str) -> dict[str, str | None]:
     t = _WHITESPACE_PATTERN.sub(' ', text).strip()
     m = _ADDR_RE.match(t)
 
     street = number = postal_code = municipality = box = None
 
+    if not m:
+        m = _ADDR_RE_NUMBER_FIRST.match(t)
+
     if m:
-        street  = _norm(m.group('street') or '')
-        number  = (m.group('number') or '').replace(' ', '')
-        postal_code = (m.group('postal_code') or '') or None
-        municipality = _canonical_municipality((m.group('municipality') or '').strip() or None)
+        groups = m.groupdict()
+
+        street  = _norm(groups.get('street', ''))
+        number  = groups.get('number', '').replace(' ', '')
+        postal_code = groups.get('postal_code', '') or None
+        municipality = _canonical_municipality((groups.get('municipality') or '').strip())
         # Extract box (from the named group or anywhere)
-        box_text = m.group('box') or ''
+        box_text = groups.get('box', '')
         if box_text:
             for pat in _BOX_PATTERNS:
                 bx = re.search(pat, box_text, flags=re.IGNORECASE)

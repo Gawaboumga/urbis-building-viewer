@@ -128,11 +128,12 @@ class AsyncLineIterator:
         except StopIteration:
             raise StopAsyncIteration
 
-        line = '\t'.join(
-            '' if getattr(obj, column) is None else str(getattr(obj, column))
-            for column in self.columns
-        ) + '\n'
+        vals = []
+        for column in self.columns:
+            v = getattr(obj, column)
+            vals.append('' if v is None else str(v))
 
+        line = '\t'.join(vals) + '\n'
         self.count += 1
         if self.report_every and self.count % self.report_every == 0:
             elapsed = time.perf_counter() - self.start

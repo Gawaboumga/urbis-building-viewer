@@ -60,10 +60,8 @@ docker exec -it "my_docker_id" /bin/bash
 pip install requests
 python
 import requests
-url = "http://localhost:8000/maintenance/load/parcel_and_building"
-requests.post(url, json={})
-url = "http://localhost:8000/maintenance/load/3d_construction"
-requests.post(url, json={})
+requests.post("http://localhost:8000/maintenance/load/parcel_and_building", json={})
+requests.post("http://localhost:8000/maintenance/load/3d_construction", json={})
 ```
 
 ## Data Source

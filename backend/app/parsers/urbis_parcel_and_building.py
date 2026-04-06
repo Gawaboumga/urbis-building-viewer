@@ -4,6 +4,7 @@ from app.core.settings import Settings
 from app.enums.cadastral_parcel_type import CadastralParcelType
 from app.enums.inspire_base_uri import InspireBaseURI
 from app.parsers.address import _norm
+from pyproj import Transformer
 from shapely.geometry import Point
 from sqlalchemy import create_engine, select, Float, Integer, REAL, String
 from sqlalchemy.event import listen
@@ -75,6 +76,13 @@ def is_valid_inspire_id(value: str | None) -> bool:
         return False
     return not value.endswith('/')
 
+def force_to_lambert_08(x, y):
+    if 100000 <= x <= 300000 and 150000 <= y <= 250000:
+        to_l08_from_l72 = Transformer.from_crs(LAMBERT_72_SRID, LAMBERT_08_SRID, always_xy=True)
+        x, y = to_l08_from_l72.transform(x, y)
+
+    return Point(x, y)
+
 def read_addresses(capa_key_to_capa_inspire_id: dict[str, int], municipalities: dict[int, Municipality], streets: dict[int, Street]) -> Iterator[Address]:
     i = 0
     with Session(engine) as session:
@@ -119,7 +127,7 @@ def read_addresses(capa_key_to_capa_inspire_id: dict[str, int], municipalities: 
                 police_number=gpkg_address.policenum,
                 box_number=gpkg_address.box_number,
                 stat_nis_code=gpkg_address.statnis_code,
-                l08=from_shape(Point(gpkg_address.xl72, gpkg_address.yl72), srid=LAMBERT_08_SRID),
+                l08=from_shape(force_to_lambert_08(gpkg_address.xl72, gpkg_address.yl72), srid=LAMBERT_08_SRID),
                 geometry=gpkg_address.geom,
             )
 

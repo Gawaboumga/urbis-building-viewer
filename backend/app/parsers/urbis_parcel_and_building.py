@@ -76,10 +76,10 @@ def is_valid_inspire_id(value: str | None) -> bool:
         return False
     return not value.endswith('/')
 
+TO_L08_FROM_L72 = Transformer.from_crs(LAMBERT_72_SRID, LAMBERT_08_SRID, always_xy=True)
 def force_to_lambert_08(x, y):
     if 100000 <= x <= 300000 and 150000 <= y <= 250000:
-        to_l08_from_l72 = Transformer.from_crs(LAMBERT_72_SRID, LAMBERT_08_SRID, always_xy=True)
-        x, y = to_l08_from_l72.transform(x, y)
+        x, y = TO_L08_FROM_L72.transform(x, y)
 
     return Point(x, y)
 

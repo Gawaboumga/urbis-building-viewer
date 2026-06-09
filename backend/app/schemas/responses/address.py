@@ -14,6 +14,6 @@ class Address(BaseModel):
     postal_code: int
     police_number: str
     box_number: str | None
-    stat_nis_code: str
+    stat_nis_code: str | None
     l08: Point
     geometry: MultiPoint

@@ -57,7 +57,7 @@ class _AddressMixin:
     postal_code: Mapped[int] = mapped_column(SmallInteger)
     police_number: Mapped[str] = mapped_column()
     box_number: Mapped[str | None] = mapped_column()
-    stat_nis_code: Mapped[str] = mapped_column()
+    stat_nis_code: Mapped[str | None] = mapped_column()
     l08: Mapped[Geometry] = mapped_column(
         Geometry(geometry_type='POINT', srid=LAMBERT_08_SRID, spatial_index=False),
     )

@@ -13,7 +13,7 @@ export interface Address {
   postal_code: number;
   police_number: string;
   box_number: string | null;
-  stat_nis_code: string;
+  stat_nis_code: string | null;
   l08: Point;
   geometry: MultiPoint;
 }

@@ -52,6 +52,7 @@ services:
       - URBIS_3D_CONSTRUCTION_GEO_PACKAGE_PATH=/data/UrbISBuildings3D_04000.gpkg
     volumes:
       - ./data:/data:ro
+      - ./snapshot:/snapshot:ro
     command: >
       sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
     restart: always

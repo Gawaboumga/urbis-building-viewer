@@ -32,7 +32,7 @@ const ShadowPage: React.FC = () => {
 
       <ul>
           <li><a href={`${BASE_URL}/download/shadow-map/20260621T080000`} download>2026-06-21 08:00 UTC (Summer - Morning)</a></li>
-          <li><a href={`${BASE_URL}/download/shadow-map/20260621T110403`} download>2026-06-21 11:40 UTC (Summer - Midday)</a></li>
+          <li><a href={`${BASE_URL}/download/shadow-map/20260621T114036`} download>2026-06-21 11:40 UTC (Summer - Midday)</a></li>
           <li><a href={`${BASE_URL}/download/shadow-map/20260621T160000`} download>2026-06-21 16:00 UTC (Summer - Afternoon)</a></li>
 
           <li><a href={`${BASE_URL}/download/shadow-map/20260923T080000`} download>2026-09-23 08:00 UTC (Autumn Equinox - Morning)</a></li>

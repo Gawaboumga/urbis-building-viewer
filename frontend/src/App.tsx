@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router';
 import About from './pages/About';
 import BuildingPage from './pages/BuildingPage';
 import MapPage from './pages/MapPage';
+import ShadowPage from './pages/ShadowPage';
 import FooterLegal from './components/FooterLegal';
 
 const App: React.FC = () => {
@@ -13,6 +14,7 @@ const App: React.FC = () => {
           <Route path="/" element={<MapPage />} />
           <Route path="/about" element={<About />} />
           <Route path="/building/:buildingSolidIds" element={<BuildingPage />} />
+          <Route path="/shadow" element={<ShadowPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>

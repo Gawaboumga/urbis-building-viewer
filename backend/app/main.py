@@ -6,6 +6,7 @@ from app.routers import (
     address as address_router,
     building as building_router,
     urbis_3d as urbis_3d_router,
+    download as download_router,
     maintenance as maintenance_router,
 )
 from fastapi import FastAPI, Depends, HTTPException, Request, status
@@ -44,6 +45,7 @@ app.add_middleware(
 app.include_router(address_router.api_router, prefix='/addresses', tags=['address'])
 app.include_router(building_router.api_router, prefix='/buildings', tags=['building'])
 app.include_router(urbis_3d_router.api_router, prefix='/urbis_3d', tags=['urbis_3d'])
+app.include_router(download_router.api_router, prefix='/download', tags=['download'])
 
 
 def internal_only(request: Request):

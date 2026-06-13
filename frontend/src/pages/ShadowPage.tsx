@@ -16,7 +16,7 @@ const ShadowPage: React.FC = () => {
 
       <h2>Datasets Used</h2>
 
-      <div class="dataset">
+      <div className="dataset">
           <ul>
               <li><strong>UrbISBuildings3D</strong> - 3D building geometries used to compute shadow casting</li>
               <li><strong>UrbISLandCover</strong> - streets and footpaths used as projection surfaces</li>
@@ -26,7 +26,7 @@ const ShadowPage: React.FC = () => {
 
       <h2>Available Shadow Snapshots</h2>
 
-      <div class="note">
+      <div className="note">
           ⚠️ Each rendered image is very large (~130MB). Download/view may be slow depending on your connection and hardware.
       </div>
 
